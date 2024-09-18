@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Page</title>
+    <link rel="stylesheet" href="/styles/index.css">
+</head>
+<body>
+    <div class="sidebar">
+        <div class="hamburger-menu" id="hamburgerMenu">
+            ☰
+        </div>
+        <h2 id="projectLink" class="active">Project</h2>
+        <h2 id="settingLink">Setting</h2>
+        <div class="info">info</div>
+    </div>
+    
+    <!-- ハンバーガーメニューの内容 -->
+    <div class="menu" id="menu">
+        <ul>
+            <li>👤 Guest</li>
+            <hr>
+            <li id="newProjectMenu">➕ NewProject
+                <ul class="submenu" id="submenu">
+                    <li>📁 CreateProject</li>
+                    <li>📂 ImportProject</li>
+                    <li>🔗 ShareProject</li>
+                </ul>
+            </li>
+            <li>🧊 Type</li>
+            <li>⬆️ Upload</li>
+            <li>🔄 Export</li>
+            <hr>
+            <li>⋮</li>
+            <hr>
+            <li>👥 Login</li>
+            <li>👋 Logout</li>
+            <hr>
+            <li id="homeLink">🏠 HOME</li>
+        </ul>
+    </div>
+
+    <div class="content" id="projectContent">
+        <!--<h1>Dashboard</h1>-->
+        
+        <h1>Projects</h1>
+        <div class="project-list">
+            <% projects.forEach(project => { %> 
+                <div class="card" data-project-id="<%= project %>">
+                    <div class="image-placeholder"></div>
+                    <p><%= project %></p>
+                </div>
+            <% }); %>
+        </div>
+        <div class="card new-project" id="newProjectButton">
+            <div class="image-placeholder"></div>
+            <p>+ New Project</p>
+        </div>
+
+        <div class="create-project-form" style="display: none;">
+            <input type="text" id="newProjectName" placeholder="プロジェクト名を入力">
+            <button id="createNewProjectButton">作成</button>
+        </div>
+    </div>
+
+    <div class="content" id="settingContent" style="display: none;">
+        <h1>Settings</h1>
+        <div class="toggle-setting">
+            <label for="accuracy">Optimize for Accuracy</label>
+            <input type="radio" id="accuracy" name="optimization" value="accuracy">
+        </div>
+        <div class="toggle-setting">
+            <label for="speed">Optimize for Speed</label>
+            <input type="radio" id="speed" name="optimization" value="speed" checked>
+        </div>
+    </div>
+    
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/scripts/index.js"></script>
+</body>
+</html>

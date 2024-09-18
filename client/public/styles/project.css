@@ -1,0 +1,592 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  background-color: #d9d9d9;
+}
+
+.sidebar {
+  width: 200px;
+  background-color: #bbbbbb;
+  padding: 20px;
+  height: 100vh;
+  box-sizing: border-box;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+.sidebar .sidebar-label {
+  margin-top: 20px;
+  cursor: pointer; /* クリック可能であることを示すカーソル */
+}
+.sidebar .sidebar-label.active {
+  color: white; /* アクティブ状態の文字色を白に設定 */
+}
+
+.sidebar .label-list {
+  display: none; /* 初期状態で表示 */
+  margin-top: 10px; 
+  margin-left: 10px; /* "Label" 文字より少し右にずらす */
+}
+
+.sidebar .label-list .active-scroll { /* スクロール位置によるアクティブ状態 */
+  color: white;
+}
+
+.sidebar .label-list .active-click {
+  background-color: #858585; /* 背景色を明るくする */
+  border-radius: 5px; /* 角を丸くする */
+  padding: 8px 12px; /* 幅を広くする */
+}
+
+
+.sidebar .sidebar-check {
+  margin-top: 20px;
+  cursor: pointer;
+}
+
+.sidebar .sidebar-check.active {
+  color: white; /* アクティブ状態の文字色を白に設定 */
+}
+.sidebar .check-list {
+  display: none; /* 初期状態では非表示 */
+  margin-top: 10px;
+  margin-left: 10px;
+}
+.active {
+  color: white;
+}
+
+.content {
+  padding: 20px;
+  box-sizing: border-box;
+  flex-grow: 1;
+  margin-left: 200px; /* sidebar の幅分だけ左マージンを設定 */
+}
+
+.image-list {
+  margin-top: 20px;
+}
+
+.image-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.image-list-title {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.image-grid {
+  display: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.label-container {
+  margin-bottom: 20px;
+  flex-direction: column;
+}
+
+.label-name {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+
+.image-label {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px 5px;
+  background-color: rgba(126, 126, 126, 0.5);
+  color: rgb(255, 255, 255);
+  border-radius: 5px;
+  cursor: pointer; /* クリック可能であることを示すカーソル */
+}
+
+.label-list-container {
+  position: absolute; 
+  background-color: rgba(126, 126, 126, 0.5);
+  color: rgb(255, 255, 255);
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 10; /* 他の要素の上に表示 */
+  width: max-content; /* ラベルリストの幅をコンテンツに合わせて調整 */
+}
+
+.label-list-container .label-item {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.label-list-container .label-item:hover {
+  background-color: #f0f0f0;
+}
+
+.image-grid-inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  position: relative; /* ラベルリストコンテナを配置するために必要 */
+}
+
+.image-card {
+  width: 150px;
+  height: 150px;
+  margin: 10px;
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #fff;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+  flex-direction: row;
+}
+
+.image-card:hover {
+  transform: scale(1.05);
+}
+
+.image-card.selected {
+  border: 3px solid rgb(82, 233, 175); /* 選択された画像に青い枠線を追加 */
+}
+
+.image-placeholder {
+  width: 100%;
+  height: 100%;
+  background-color: #e0e0e0;
+  background-size: cover;
+  border-radius: 4px;
+  pointer-events: none; /* 右クリックを無効化 */
+}
+
+.image-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 5px;
+  font-size: 14px;
+  text-align: center;
+  display: none;
+}
+
+.image-card:hover .image-name {
+  display: block;
+}
+
+.upload-button {
+  width: 150px;
+  height: 150px;
+  margin: 10px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 32px;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.upload-button:hover {
+  background-color: #e0e0e0;
+}
+
+.upload-button::after {
+  content: "Add Images";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  display: none;
+}
+
+.upload-button:hover::after {
+  display: block;
+}
+
+.delete-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: none;
+}
+
+.image-card:hover .delete-button {
+  display: block;
+}
+
+.label-delete-button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 10px;
+}
+
+.hamburger-menu {
+  cursor: pointer;
+  font-size: 24px;
+  position: absolute;
+  top: 10px;
+  left: 10px;
+}
+
+.sidebar {
+  width: 200px;
+  background-color: #bbbbbb;
+  padding: 20px;
+  height: 100vh;
+  box-sizing: border-box;
+  position: fixed;
+}
+
+.sidebar .label-list {
+  margin-top: 20px;
+}
+
+.sidebar .label-list > div {
+  margin-bottom: 5px;
+}
+
+.sidebar .image-count {
+  font-size: 12px; /* 画像数のフォントサイズを小さくする */
+  color: gray; /* 画像数をグレーで表示する */
+}
+
+
+.enlarged-image-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000; /* 他の要素の上に表示 */
+}
+
+.enlarged-image-container .close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: transparent;
+  border: none;
+  font-size: 50px;
+  cursor: pointer;
+  color: white;
+}
+
+.enlarged-image-placeholder {
+  width: 80%;
+  height: 80%;
+  background-size: contain;
+  background-position: center;
+}
+
+#uploadButtonContainer button {
+  font-weight: bold;
+  background-color: #858585; /* 背景色をグレーに設定 */
+  color: black; /* 文字色を黒に設定 */
+  border: none; /* 枠線を削除 */
+  padding: 10px 20px; /* 余白を追加 */
+  border-radius: 5px; /* 角を丸くする */
+  cursor: pointer; /* クリック可能であることを示すカーソル */
+}
+
+.predicted-label {
+  font-weight: bold;
+  margin-bottom: 10px; /* 下の要素との余白を調整 */
+}
+
+#uploadedFolderName {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #333;
+}
+
+/* アップロード済みフォルダのスタイル */
+.uploaded-folder-container {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column; /* 縦方向に要素を配置 */
+  position: relative; 
+}
+
+/* アップロード済みフォルダのスタイル */
+.uploaded-folder-container > div { /* フォルダ名を表示する div */
+  font-weight: bold;
+  margin: 10px 0;
+  display: flex;
+}
+
+/* Verify ボタンのスタイル */
+.uploaded-folder-container button {
+  margin-left: 10px;
+}
+
+.folder-icon {
+  margin-right: 5px;
+  font-size: 15px; /* アイコンのサイズを調整 */
+}
+
+/* アップロード済み画像のコンテナのスタイル */
+.uploaded-images-container {
+  display: flex;
+  flex-direction: row; /* 画像を横並びにする */
+  flex-wrap: wrap; /* 画像が横幅を超えた場合、折り返して表示 */
+}
+
+/* 検証結果が表示された時に適用されるクラス */
+.uploaded-images-container.verification-result { 
+  flex-direction: column; /* 画像を縦並びにする */
+}
+
+/* アップロード済み画像のスタイル */
+.uploaded-image-card {
+  width: 150px; /* Label 側の画像の幅と同じ */
+  height: 150px; /* Label 側の画像の高さと同じ */
+  margin: 10px; /* Label 側の画像のマージンと同じ */
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #fff;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+}
+
+.uploaded-image-card:hover {
+  transform: scale(1.05);
+}
+
+.uploaded-image-card .image-placeholder {
+  width: 100%;
+  height: 100%;
+  background-color: #e0e0e0;
+  background-size: cover;
+  border-radius: 4px;
+  pointer-events: none; /* 右クリックを無効化 */
+}
+
+.uploaded-image-card .image-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 5px;
+  font-size: 14px;
+  text-align: center;
+  display: none;
+}
+
+.uploaded-image-card:hover .image-name {
+  display: block;
+}
+
+/* ホバー時のスタイル */
+.uploaded-image-card.hovered {
+  transform: scale(1.1); /* ホバー時に画像を少し大きくする */
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); /* ホバー時に影を濃くする */
+}
+
+.uploaded-image-card .confidence {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  color: white;
+  font-size: 20px;
+  text-shadow: 0 0 3px black; /* 文字に縁取りを追加 */
+}
+
+.uploaded-image-card:hover .confidence {
+  display: none; /* ホバー時に確度を非表示にする */
+}
+
+.uploaded-image-card .label-confidence-container {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 5px;
+  overflow-y: auto;
+  max-height: 80px;
+  display: none; /* 初期状態では非表示 */
+}
+
+.uploaded-image-card:hover .label-confidence-container {
+  display: block; /* ホバー時に表示 */
+}
+
+.uploaded-image-card .label-confidence {
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+
+
+.result-label-group {
+  margin-bottom: 20px;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.result-label-name {
+  font-weight: bold; /* ラベル名を太字に */
+  margin-bottom: 10px;
+}
+
+.result-images-container {
+  display: flex;
+  flex-direction: row; /* 画像を横並びにする */
+  flex-wrap: wrap; /* 画像が横幅を超えた場合、折り返して表示 */
+  margin-top: 10px; /* ラベル名との間にマージンを設定 */
+}
+
+.progress-container {
+  width: 100px;
+  height: 100px;
+  margin: 20px auto;
+  position: relative; /* パーセンテージ表示を中央に配置するために必要 */
+}
+
+
+.progress-bar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: transparent;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative; /* ::before 擬似要素を配置するために必要 */
+}
+
+.progress-bar::before { /* 中央に白い円を重ねる */
+  content: "";
+  position: absolute;
+  top: 5%;
+  left: 5%;
+  width: 90%;
+  height: 90%;
+  border-radius: 50%;
+  background-color: #bbbbbb;
+}
+.percentage {
+  position: absolute; /* 親要素 (progress-bar) に対して絶対位置 */
+  font-size: 20px;
+  font-weight: bold;
+}
+
+#LearnStartButton {
+  display: block;
+  width: 80%;
+  margin-left: 0; /* 左寄せにする */
+  padding: 10px;
+  border: none;
+  border-radius: 5px;
+  background-color: transparent; 
+  color: black;
+  font-size: 16px;
+  cursor: pointer; 
+  text-align: left; 
+}
+
+#trainStartIcon {
+  margin-right: 10px; /* "Train" との間に右マージンを追加 */
+  cursor: pointer; 
+  pointer-events: auto; /* ▶ マークのクリック判定を有効化 (デフォルト) */
+}
+.menu {
+  display: none;
+  position: absolute;
+  top: 50px;
+  left: 10px;
+  width: 150px;
+  background-color: #efefef;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  z-index: 100;
+}
+
+.menu ul {
+  list-style: none;
+  padding: 10px;
+  margin: 0;
+}
+
+.menu ul li {
+  padding: 10px 0;
+  cursor: pointer;
+  text-align: center;
+  border-bottom: 1px solid #ccc;
+  position: relative;
+}
+
+.menu ul li:hover {
+  background-color: #d0d0d0;
+}
+
+.menu ul hr {
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid #ccc;
+}
+
+/* サブメニューのスタイル */
+.submenu {
+  display: none;
+  position: absolute;
+  left: 150px;
+  top: 0;
+  background-color: #e0e0e0;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.submenu li {
+  padding: 10px 15px;
+  border-bottom: 1px solid #ccc;
+  text-align: left;
+}
+
+.submenu li:hover {
+  background-color: #d0d0d0;
+}
+
+.info {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  font-size: 14px;
+  cursor: pointer;
+}

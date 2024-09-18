@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= projectName %></title>
+  <link rel="stylesheet" href="/styles/project.css">
+</head>
+<body>
+  <div class="sidebar">
+    <div class="hamburger-menu" id="hamburgerMenu">
+      ☰
+    </div>
+    <h2 id="projectLink"><%= projectName %></h2>
+    <div class="info">info</div>
+    <!-- ラベル表示用の要素を追加 -->
+  <div class="sidebar-label" id="sidebarLabel">
+    Label 
+    <span id="labelToggleIcon">﹀</span> </div>
+
+  <!-- ラベル一覧表示用のコンテナを追加 -->
+  <div class="label-list" id="sidebarLabelList" style="display: none;"></div> 
+  <!-- Check 項目を追加 -->
+  <div class="sidebar-check" id="sidebarCheck">Check</div>
+  <div class="check-list" id="sidebarCheckList" style="display: none;"></div>
+  <!-- プログレスバーを表示する領域を追加 -->
+  <div class="progress-container" id="progressContainer"></div>
+  
+  <!-- "Learn Start" ボタンを移動 -->
+  <button id="LearnStartButton">
+    <span id="trainStartIcon">▷</span> Train
+  </button>
+
+  </div>
+     <!-- ハンバーガーメニューの内容 -->
+     <div class="menu" id="menu">
+      <ul>
+          <li>👤 Guest</li>
+          <hr>
+          <li id="newProjectMenu">➕ NewProject
+              <ul class="submenu" id="submenu">
+                  <li>📁 CreateProject</li>
+                  <li>📂 ImportProject</li>
+                  <li>🔗 ShareProject</li>
+              </ul>
+          </li>
+          <li>🧊 Type</li>
+          <li>⬆️ Upload</li>
+          <li>🔄 Export</li>
+          <hr>
+          <li>⋮</li>
+          <hr>
+          <li>👥 Login</li>
+          <li>👋 Logout</li>
+          <hr>
+          <li id="homeLink">🏠 HOME</li>
+      </ul>
+  </div>
+
+  </div>
+
+  <div class="content" id="projectContent">
+    <!-- 画像一覧 -->
+    <div class="image-list" id="imageList" style="display: none;">
+      <div class="image-list-header">
+        <span class="image-list-title">ALL (<%= images.length %> images)</span>
+        <!--button class="sort-button">Sort</button-->
+      </div>
+      <div class="image-grid" id="imageGrid">
+        <!--ここにproject.jsのcreateLabelContainer関数でラベルごとに生成される。-->
+      </div>
+
+      <!-- ラベル追加 -->
+      <div class="add-label-container">
+        <button id="addLabelButton">⊕ Add Label</button>
+        <div class="add-label-form" style="display: none;">
+          <input type="text" id="newLabelName" placeholder="ラベル名を入力">
+          <button id="createNewLabelButton">作成</button>
+        </div>
+      </div> 
+    </div>
+
+    <!-- Check 項目の内容を表示する領域を追加 -->
+    <div class="check-content" id="checkContent" style="display: none;">
+      <!-- Check 項目の内容はここに表示 -->
+      <div id="uploadButtonContainer"></div>
+    </div>
+
+    
+
+  </div>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="/scripts/project.js"></script>
+</body>
+</html>
