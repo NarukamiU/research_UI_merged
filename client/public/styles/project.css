@@ -166,6 +166,30 @@ body {
   pointer-events: none; /* 右クリックを無効化 */
 }
 
+
+.image-placeholder.loading {
+  background-color: #f0f0f0; /* 背景色 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.image-placeholder.loading::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 4px solid #ccc; /* 枠線の色 */
+  border-radius: 50%;
+  border-top-color: #333; /* 上部の枠線の色 */
+  animation: spin 1s linear infinite; /* アニメーションの設定 */
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .image-name {
   position: absolute;
   bottom: 0;
@@ -308,6 +332,30 @@ body {
   background-position: center;
 }
 
+.enlarged-image-placeholder.loading {
+  background-color: #f0f0f0; /* 背景色 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.enlarged-image-placeholder.loading::before {
+  content: '';
+  display: inline-block;
+  width: 40px; /* サイズを大きく */
+  height: 40px; /* サイズを大きく */
+  border: 4px solid #ccc;
+  border-radius: 50%;
+  border-top-color: #333;
+  animation: spin 1s linear infinite;
+}
+
+/* 既存のローディングアニメーション */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 #uploadButtonContainer button {
   font-weight: bold;
   background-color: #858585; /* 背景色をグレーに設定 */
@@ -390,6 +438,32 @@ body {
   background-size: cover;
   border-radius: 4px;
   pointer-events: none; /* 右クリックを無効化 */
+}
+
+.image-placeholder.loading, /* 既存のスタイル */
+.uploaded-image-card .image-placeholder.loading { /* Check画面の画像にも適用 */
+  background-color: #f0f0f0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.image-placeholder.loading::before, /* 既存のスタイル */
+.uploaded-image-card .image-placeholder.loading::before { /* Check画面の画像にも適用 */
+  content: '';
+  display: inline-block;
+  width: 20px; /* サイズは適宜調整 */
+  height: 20px; /* サイズは適宜調整 */
+  border: 4px solid #ccc;
+  border-radius: 50%;
+  border-top-color: #333;
+  animation: spin 1s linear infinite;
+}
+
+/* 既存のローディングアニメーション */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .uploaded-image-card .image-name {
@@ -525,7 +599,7 @@ body {
 }
 .menu {
   display: none;
-  position: absolute;
+  position: fixed;
   top: 50px;
   left: 10px;
   width: 150px;

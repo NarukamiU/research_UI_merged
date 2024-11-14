@@ -1,4 +1,3 @@
-
 // ==============================
 // 1. グローバル変数と定数
 // ==============================
@@ -9,28 +8,39 @@ const API_BASE_URL = 'http://localhost:3000';
 // グローバルスコープで socket 変数を定義
 let socket;
 
+// 画像縮小率 (0.1 - 1.0), 0.2 で元のサイズの 20%
+let imageScale = 0.2; 
+
 // ==============================
 // 2. ヘルパー関数
 // ==============================
 
-// 要素の表示・非表示を切り替える関数
+/**
+ * 要素の表示・非表示を切り替える関数
+ * @param {HTMLElement} element - 表示を切り替える対象の要素
+ */
 function toggleElementDisplay(element) {
   element.style.display = element.style.display === 'block' ? 'none' : 'block';
 }
 
-// 共通のエラーハンドリング関数
+/**
+ * 共通のエラーハンドリング関数
+ * @param {Error} error - 発生したエラー
+ * @param {string} message - ユーザーに表示するメッセージ
+ */
 function handleError(error, message) {
   console.error(error);
   alert(message);
 }
 
-// 共通のエラーハンドリング関数
-function handleError(error, message) {
-  console.error(error);
-  alert(message);
-}
-
-// 共通のリクエスト送信関数
+/**
+ * 共通のリクエスト送信関数
+ * @param {string} url - リクエスト先のURL
+ * @param {string} method - HTTPメソッド
+ * @param {Object} data - 送信するデータ
+ * @param {string} errorMessage - エラーメッセージ
+ * @returns {Promise<Object>} - レスポンスデータ
+ */
 async function sendRequest(url, method, data, errorMessage) {
   try {
     const response = await fetch(url, {
@@ -51,145 +61,197 @@ async function sendRequest(url, method, data, errorMessage) {
     throw error;
   }
 }
+
+// ==============================
+// 2.5 API
+// ==============================
+
+/**
+ * ローディング表示API
+ * @param {HTMLElement} element - ローディングを表示する要素
+ * @returns {Promise<void>}
+ */
+function showLoading(element) {
+  return new Promise(resolve => {
+    element.classList.add('loading');
+    const loadingCompleteEvent = new CustomEvent('loadingComplete');
+    element.addEventListener('loadingComplete', () => {
+      element.classList.remove('loading');
+      resolve();
+    }, { once: true });
+  });
+}
+
+/**
+ * 画像を縮小して低画質で表示するAPI (DataURLを返す)
+ * @param {HTMLImageElement} img - 画像要素
+ * @param {number} scale - 縮小率
+ * @returns {Promise<string>} - 画像のDataURL
+ */
+function displayLowQualityImage(img, scale) {
+  return new Promise(resolve => {
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg')); 
+    };
+  });
+}
+
+/**
+ * ローディング表示と遅延読み込みを組み合わせたAPI
+ * @param {string} imageSrc - 画像のソースURL
+ * @param {number} scale - 画像の縮小率
+ * @param {HTMLElement} imageContainer - 画像を表示するコンテナ
+ * @returns {Promise<void>}
+ */
+async function lazyLoadImage(imageSrc, scale, imageContainer) {
+  const loadingPromise = showLoading(imageContainer);
+  try {
+    const response = await fetch(imageSrc);
+    const blob = await response.blob();
+    const img = new Image();
+    img.src = URL.createObjectURL(blob);
+    const scaledImageDataUrl = await displayLowQualityImage(img, scale);
+    imageContainer.style.backgroundImage = `url(${scaledImageDataUrl})`;
+    imageContainer.dispatchEvent(new CustomEvent('loadingComplete'));
+  } catch (error) {
+    handleError(error, "画像の取得に失敗しました。");
+    imageContainer.dispatchEvent(new CustomEvent('loadingComplete'));
+  }
+}
+
 // ==============================
 // 3. データ取得と表示
 // ==============================
 
-// サーバーからラベルリストを取得する関数
+/**
+ * サーバーからラベルリストを取得する関数
+ * @param {string} projectName - プロジェクト名
+ * @returns {Promise<Array>} - ラベルリスト
+ */
 async function fetchLabelList(projectName) {
   const projectPath = `/projects/${projectName}/training-data`; 
-  const response = await fetch(`http://localhost:3000/directory?path=${projectPath}`);
+  const response = await fetch(`${API_BASE_URL}/directory?path=${projectPath}`);
   if (!response.ok) {
     throw new Error('ラベルリストの取得に失敗しました');
   }
   return await response.json();
 }
 
-// 既存のラベルコンテナをクリアする関数
+/**
+ * 既存のラベルコンテナをクリアする関数
+ */
 function clearLabelContainers() {
   const imageGrid = document.getElementById('imageGrid');
-  imageGrid.innerHTML = ''; // 既存のラベルを削除
+  imageGrid.innerHTML = '';
 }
 
+/**
+ * 画像カードを追加する関数
+ * @param {HTMLElement} imageGridInner - 画像グリッド内の要素
+ * @param {string} imageSrc - 画像のソースURL
+ * @param {string} imageName - 画像名
+ * @param {string} labelName - ラベル名
+ * @param {IntersectionObserver} observer - 画像の観察者
+ */
+function addImageCard(imageGridInner, imageSrc, imageName, labelName, observer) {
+  const imageCard = document.createElement('div');
+  imageCard.classList.add('image-card');
+  imageCard.dataset.imageName = imageName;
+  imageCard.dataset.labelName = labelName;
 
+  const imagePlaceholder = document.createElement('div');
+  imagePlaceholder.classList.add('image-placeholder');
+  imageCard.appendChild(imagePlaceholder);
 
+  observer.observe(imageCard);
+  lazyLoadImage(imageSrc, imageScale, imagePlaceholder).catch(() => {});
 
-// 画像を表示する関数
-async function displayImage(imagePath, labelName, imageName, imageContainer) {
-  try {
-    const encodedImageName = encodeURIComponent(imageName); // 画像名をエンコード
-    const response = await fetch(`http://localhost:3000/images?path=${imagePath}/${labelName}/${encodedImageName}`);
-    const blob = await response.blob();
+  // Delete ボタン
+  const deleteButton = document.createElement('button');
+  deleteButton.classList.add('delete-button');
+  deleteButton.textContent = 'Delete';
+  deleteButton.dataset.imageName = imageName;
+  deleteButton.dataset.labelName = labelName;
+  deleteButton.style.display = 'none';
+  deleteButton.addEventListener('click', handleDeleteButtonClick);
+  imageCard.appendChild(deleteButton);
 
-    const img = document.createElement('img');
-    img.src = URL.createObjectURL(blob);
-    img.style.width = '100%';
-    img.style.height = '100%';
-    img.style.objectFit = 'cover';
+  // ラベル表示
+  const labelSpan = document.createElement('span');
+  labelSpan.classList.add('image-label');
+  labelSpan.textContent = labelName;
+  labelSpan.style.display = 'none';
+  labelSpan.addEventListener('click', handleLabelClick);
+  imageCard.appendChild(labelSpan);
 
-    imageContainer.innerHTML = ''; 
-    imageContainer.appendChild(img);
+  // 画像名表示
+  const imageNameSpan = document.createElement('span');
+  imageNameSpan.classList.add('image-name');
+  imageNameSpan.style.display = 'none';
+  imageCard.appendChild(imageNameSpan);
 
-  } catch (error) {
-    handleError(error, '画像の取得に失敗しました');
-  }
+  // ホバーイベント
+  imageCard.addEventListener('mouseover', () => {
+    imageNameSpan.textContent = imageName;
+    imageNameSpan.style.display = 'block';
+  });
+
+  imageCard.addEventListener('mouseout', () => {
+    imageNameSpan.style.display = 'none';
+  });
+
+  imageGridInner.appendChild(imageCard);
 }
 
-
-
-
-// 指定されたラベルの画像を表示する関数
+/**
+ * 指定されたラベルの画像を表示する関数
+ * @param {Object} label - ラベルオブジェクト
+ * @param {string} projectPath - プロジェクトパス
+ * @returns {Promise<void>}
+ */
 async function displayImagesForLabel(label, projectPath) {
-  const response = await fetch(`http://localhost:3000/directory?path=${projectPath}/${label.name}`);
+  const response = await fetch(`${API_BASE_URL}/directory?path=${projectPath}/${label.name}`);
   const imageList = await response.json();
-
   const imageGridInner = document.querySelector(`.label-container[data-label-id="${label.name}"] .image-grid-inner`);
+  const observer = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const imageCard = entry.target;
+        const imageSrc = `/images?path=${projectPath}/${label.name}/${encodeURIComponent(imageCard.dataset.imageName)}`;
+        lazyLoadImage(imageSrc, imageScale, imageCard.querySelector('.image-placeholder')).catch(() => {});
+        observer.unobserve(imageCard);
+      }
+    });
+  });
 
-  // すべての画像を並行処理で取得
-  await Promise.all(
-    imageList.filter(image => !image.isDirectory).map(async image => {
-      const imagePlaceholder = document.createElement('div');
-      imagePlaceholder.classList.add('image-placeholder');
-      const imageCard = document.createElement('div');
-      imageCard.classList.add('image-card');
-      imageCard.dataset.imageName = image.name;
-      imageCard.dataset.labelName = label.name;
-      imageCard.appendChild(imagePlaceholder);
-
-      // 画像を表示
-      await displayImage(projectPath, label.name, image.name, imagePlaceholder);
-
-      // 画像カードをimageGridInnerに追加
-      imageGridInner.appendChild(imageCard);
-
-      // 画像カードに削除ボタンを追加
-      const deleteButton = document.createElement('button');
-      deleteButton.classList.add('delete-button');
-      deleteButton.textContent = 'Delete';
-      deleteButton.dataset.imageName = image.name;
-      deleteButton.dataset.labelName = label.name;
-      deleteButton.addEventListener('click', handleDeleteButtonClick);
-      deleteButton.style.display = 'none'; // 初期表示状態を非表示に設定
-      imageCard.appendChild(deleteButton);
-
-      // 画像カードにラベル表示を追加
-      const labelSpan = document.createElement('span');
-      labelSpan.classList.add('image-label');
-      labelSpan.textContent = label.name;
-      labelSpan.addEventListener('click', handleLabelClick); // クリックイベントリスナーを追加
-      labelSpan.style.display = 'none'; // 初期状態では非表示
-      imageCard.appendChild(labelSpan);
-
-      // 画像名を表示するspan要素を追加
-      const imageNameSpan = document.createElement('span');
-      imageNameSpan.classList.add('image-name');
-      imageNameSpan.style.display = 'none'; // 初期表示は非表示
-      imageCard.appendChild(imageNameSpan);
-
-      // ホバーイベントリスナーを追加
-      imageCard.addEventListener('mouseover', (event) => {
-        imageNameSpan.textContent = image.name;
-        imageNameSpan.style.display = 'block';
-      });
-
-      imageCard.addEventListener('mouseout', (event) => {
-        imageNameSpan.style.display = 'none';
-      });
-    })
-  );
+  imageList.filter(image => !image.isDirectory).forEach(image => {
+    const imageSrc = `/images?path=${projectPath}/${label.name}/${encodeURIComponent(image.name)}`;
+    addImageCard(imageGridInner, imageSrc, image.name, label.name, observer);
+  });
 }
 
-// 各ラベルの画像を表示する関数
-async function displayEachImages() {
+/**
+ * 各ラベルの画像を表示する関数
+ * @returns {Promise<void>}
+ */
+async function displayEachLabelImages() {
   try {
     const projectName = document.getElementById("projectLink").textContent.trim();
     const projectPath = `/projects/${projectName}`;
-
-    // 既存の画像カードを削除
-    const imageGrids = document.querySelectorAll('.image-grid-inner');
-    imageGrids.forEach(grid => grid.innerHTML = '');
-    
-    // ラベルリストを取得 (training-data のラベルのみ)
-    const response = await fetch(`/directory?path=${projectPath}/training-data`); 
-    const labelList = await response.json();
-
-    // 既存のラベルコンテナをクリア
     clearLabelContainers();
 
-    // 新しいラベルコンテナを生成
+    const labelList = await fetchLabelList(projectName);
     createLabelContainers(labelList);
 
-    // 各ラベルの画像を表示
     await Promise.all(
-      labelList.map(async (label) => {
-        if (label.isDirectory) {
-          await displayImagesForLabel(label, `${projectPath}/training-data`); // training-data のパスを指定
-          updateLabelImageCount(label.name); // ラベルごとの画像数を更新
-        }
-      })
+      labelList.filter(label => label.isDirectory).map(label => displayImagesForLabel(label, `${projectPath}/training-data`).then(() => updateLabelImageCount(label.name)))
     );
 
-    // 画像総数を更新
     updateImageCount();
   } catch (error) {
     handleError(error, '画像一覧の取得に失敗しました');
@@ -200,28 +262,32 @@ async function displayEachImages() {
 // 4. DOM操作とイベントリスナー
 // ==============================
 
-// ラベルコンテナを作成する関数
+/**
+ * ラベルコンテナを作成する関数
+ * @param {string} labelName - ラベル名
+ * @returns {HTMLElement} - 作成したラベルコンテナ
+ */
 function createLabelContainer(labelName) {
   const labelContainer = document.createElement('div');
   labelContainer.classList.add('label-container');
   labelContainer.dataset.labelId = labelName;
 
-  // ラベル名の表示
+  // ラベル名
   const labelNameElement = document.createElement('div');
   labelNameElement.classList.add('label-name');
   labelNameElement.textContent = labelName;
   labelContainer.appendChild(labelNameElement);
 
-   // 削除ボタン
-   const deleteButton = document.createElement('button');
-   deleteButton.classList.add('label-delete-button');
-   deleteButton.textContent = 'Label Delete';
-   deleteButton.dataset.projectName = document.getElementById("projectLink").textContent.trim();
-   deleteButton.dataset.labelName = labelName;
-   deleteButton.addEventListener('click', handleLabelDeleteClick);
-   labelContainer.appendChild(deleteButton);
+  // 削除ボタン
+  const deleteButton = document.createElement('button');
+  deleteButton.classList.add('label-delete-button');
+  deleteButton.textContent = 'Label Delete';
+  deleteButton.dataset.projectName = document.getElementById("projectLink").textContent.trim();
+  deleteButton.dataset.labelName = labelName;
+  deleteButton.addEventListener('click', handleLabelDeleteClick);
+  labelContainer.appendChild(deleteButton);
 
-  // 画像グリッドのコンテナ
+  // 画像グリッド
   const imageGridInner = document.createElement('div');
   imageGridInner.classList.add('image-grid-inner');
   labelContainer.appendChild(imageGridInner);
@@ -236,55 +302,67 @@ function createLabelContainer(labelName) {
   return labelContainer;
 }
 
-
-// 新しいラベルコンテナを生成する関数
+/**
+ * 新しいラベルコンテナを生成する関数
+ * @param {Array} labelList - ラベルリスト
+ */
 function createLabelContainers(labelList) {
   const imageGrid = document.getElementById('imageGrid');
-  labelList.forEach(label => {
-    if (label.isDirectory) {
-      const newLabelContainer = createLabelContainer(label.name);
-      imageGrid.appendChild(newLabelContainer);
-    }
+  labelList.filter(label => label.isDirectory).forEach(label => {
+    const newLabelContainer = createLabelContainer(label.name);
+    imageGrid.appendChild(newLabelContainer);
   });
 }
 
-// プログレスバーを表示する関数
+/**
+ * プログレスバーを表示する関数
+ * @returns {Promise<void>}
+ */
 async function displayProgress() {
   const progressContainer = document.getElementById('progressContainer');
-
-  // 円形のプログレスバーを生成
   const progressBar = document.createElement('div');
   progressBar.classList.add('progress-bar');
   progressContainer.appendChild(progressBar);
 
-  // パーセンテージ表示を生成
   const percentage = document.createElement('div');
   percentage.classList.add('percentage');
   progressBar.appendChild(percentage);
 }
 
-
-// プログレスバーを更新する関数 (変更なし)
+/**
+ * プログレスバーを更新する関数
+ * @param {number} progress - 進捗率
+ */
 function updateProgress(progress) {
   const progressBar = document.querySelector('.progress-bar');
   const percentage = document.querySelector('.percentage');
-
   const angle = progress * 3.6; 
-
   progressBar.style.backgroundImage = `conic-gradient(#68b7ff 0deg, #68b7ff ${angle}deg, transparent ${angle}deg, transparent 360deg)`; 
-
   percentage.textContent = `${progress}%`;
 }
 
-// 画像総数を更新する関数
+/**
+ * 画像総数を更新する関数
+ */
 function updateImageCount() {
   const imageListTitle = document.querySelector('.image-list-title');
   const totalImages = document.querySelectorAll('.image-card').length;
   imageListTitle.textContent = `ALL (${totalImages} images)`;
 }
 
+/**
+ * 各種ラベルの画像数を更新する関数
+ * @param {string} labelName - ラベル名
+ */
+function updateLabelImageCount(labelName) {
+  updateContentLabelImageCount(labelName);
+  updateSidebarLabelImageCount(labelName);
+}
 
-// content 側のラベルの画像数を更新する関数
+/**
+ * コンテンツ内のラベル画像数を更新する関数
+ * @param {string} labelName - ラベル名
+ */
 function updateContentLabelImageCount(labelName) {
   const labelNameElement = document.querySelector(`.label-container[data-label-id="${labelName}"] .label-name`);
   if (labelNameElement) {
@@ -293,78 +371,63 @@ function updateContentLabelImageCount(labelName) {
   }
 }
 
-// サイドバーのラベルの画像数を更新する関数
+/**
+ * サイドバー内のラベル画像数を更新する関数
+ * @param {string} labelName - ラベル名
+ */
 function updateSidebarLabelImageCount(labelName) {
   const sidebarLabelElement = Array.from(document.querySelectorAll('#sidebarLabelList div:not(.image-count)')).find(element => element.textContent === labelName);
   if (sidebarLabelElement) {
     const sidebarImageCountElement = sidebarLabelElement.nextElementSibling; 
-    const labelImages = document.querySelectorAll(`.image-card[data-label-name="${labelName}"]`).length; // 画像数を取得
+    const labelImages = document.querySelectorAll(`.image-card[data-label-name="${labelName}"]`).length;
     sidebarImageCountElement.textContent = `${labelImages} images`;
   }
 }
 
-// ラベルの画像数を更新する関数
-function updateLabelImageCount(labelName) {
-  updateContentLabelImageCount(labelName);
-  updateSidebarLabelImageCount(labelName);
-}
-
-// ラベルをクリックした時のイベントリスナー
+/**
+ * ラベルクリックイベントのハンドラー
+ * @param {Event} event - クリックイベント
+ */
 function handleLabelClick(event) {
   const labelElement = event.target;
   const imageCard = labelElement.closest('.image-card'); 
-
-  // 既に展開されているラベルリストコンテナを取得
   const existingLabelListContainer = document.querySelector('.label-list-container');
-  
-  // 既存のコンテナが存在し、クリックされたラベル要素の親要素でない場合は、既存のコンテナを削除
+
   if (existingLabelListContainer && existingLabelListContainer.parentNode !== labelElement.parentNode) {
     existingLabelListContainer.remove();
   }
 
-  // 既存のラベルリストコンテナを削除
   const currentLabelListContainer = labelElement.parentNode.querySelector('.label-list-container');
   if (currentLabelListContainer) {
     currentLabelListContainer.remove();
-    return; // 既存のコンテナを削除したら関数を終了
+    return;
   }
 
-  // 新しいラベルリストコンテナを作成
   const labelListContainer = document.createElement('div');
   labelListContainer.classList.add('label-list-container');
-
-  // 現在のラベル名を取得
   const currentLabel = labelElement.textContent;
-
-  // ラベルリストを取得
   const projectName = document.getElementById("projectLink").textContent.trim();
   const projectPath = `/projects/${projectName}/training-data`;
-  fetch(`http://localhost:3000/directory?path=${projectPath}`)
+
+  fetch(`${API_BASE_URL}/directory?path=${projectPath}`)
     .then(response => response.json())
     .then(labelList => {
-      // 現在のラベル以外のラベルをリストに追加
-      labelList.forEach(label => {
-        if (label.isDirectory && label.name !== currentLabel) {
-          const labelItem = document.createElement('div');
-          labelItem.classList.add('label-item');
-          labelItem.textContent = label.name;
-          labelItem.dataset.labelName = label.name;
-          labelItem.addEventListener('click', handleLabelItemClick);
-          labelListContainer.appendChild(labelItem);
-        }
+      labelList.filter(label => label.isDirectory && label.name !== currentLabel).forEach(label => {
+        const labelItem = document.createElement('div');
+        labelItem.classList.add('label-item');
+        labelItem.textContent = label.name;
+        labelItem.dataset.labelName = label.name;
+        labelItem.addEventListener('click', handleLabelItemClick);
+        labelListContainer.appendChild(labelItem);
       });
 
-      // ラベル要素と image-grid-inner 要素の位置を取得
       const labelRect = labelElement.getBoundingClientRect();
       const imageGridInnerRect = imageCard.parentNode.getBoundingClientRect();
-
-      // ラベルリストコンテナの位置を設定 (image-grid-inner を基準とした相対位置)
       labelListContainer.style.top = `${labelRect.bottom - imageGridInnerRect.top}px`;
       labelListContainer.style.left = `${labelRect.left - imageGridInnerRect.left}px`;
-
-      // ラベル要素の親要素 (image-grid-inner) にラベルリストコンテナを追加
       imageCard.parentNode.appendChild(labelListContainer);
 
+      // 外部クリックでラベルリストを閉じる
       document.addEventListener('click', (event) => {
         if (!labelListContainer.contains(event.target) && !labelElement.contains(event.target)) {
           labelListContainer.remove();
@@ -376,110 +439,99 @@ function handleLabelClick(event) {
     });
 }
 
-// ラベル項目クリック時のイベントリスナー
+/**
+ * ラベル項目クリックイベントのハンドラー
+ * @param {Event} event - クリックイベント
+ */
 async function handleLabelItemClick(event) {
   const selectedImageCards = document.querySelectorAll('.image-card.selected');
   const targetLabel = event.target.dataset.labelName;
   const projectName = document.getElementById("projectLink").textContent.trim();
 
   try {
-    // 選択されたすべての画像カードを移動
     await Promise.all(
       Array.from(selectedImageCards).map(async (imageCard) => {
         const { imageName, labelName: sourceLabel } = imageCard.dataset;
-
-        // 移動先のラベルと画像の現在のラベルが異なる場合のみ移動処理を行う
         if (sourceLabel !== targetLabel) {
-          // moveImage から返された Promise を処理
           await moveImage(projectName, imageName, sourceLabel, targetLabel); 
-
-          // 移動後のラベルを表示
           const labelSpan = imageCard.querySelector('.image-label');
           labelSpan.textContent = targetLabel;
-          labelSpan.style.display = 'none'; // ラベルを非表示にする
-          imageCard.dataset.labelName = targetLabel; // data-label-name 属性も更新
+          labelSpan.style.display = 'none';
+          imageCard.dataset.labelName = targetLabel;
 
-          // 画像カードを新しいラベルコンテナに移動
           const targetLabelContainer = document.querySelector(`.label-container[data-label-id="${targetLabel}"] .image-grid-inner`);
           targetLabelContainer.appendChild(imageCard);
 
-          // 移動元のラベルと移動先のラベルの画像数を更新
           updateLabelImageCount(sourceLabel);
           updateLabelImageCount(targetLabel);
         }
       })
     );
 
-    // ラベルリストコンテナを削除
-    const labelListContainer = document.querySelector('.label-list-container');
-    if (labelListContainer) {
-      labelListContainer.remove();
-    }
-
-    // すべての画像の移動処理が完了したことをサーバーに通知
+    document.querySelector('.label-list-container')?.remove();
     socket.emit('moveImageComp'); 
   } catch (error) {
     handleError(error, '画像の移動に失敗しました');
   }
 }
 
-
-// "Upload" ボタンのクリックイベントハンドラ
+/**
+ * "Upload" ボタンクリックイベントのハンドラー
+ */
 async function handleUploadFolderClick() {
-  // フォルダ選択ダイアログを表示
-  const directoryHandle = await window.showDirectoryPicker();
+  try {
+    const directoryHandle = await window.showDirectoryPicker();
+    const projectName = document.getElementById("projectLink").textContent.trim();
+    const folderName = directoryHandle.name;
 
-  // プロジェクト名を取得
-  const projectName = document.getElementById("projectLink").textContent.trim();
+    const folderNameElement = document.createElement('div');
+    folderNameElement.id = 'uploadedFolderName';
+    folderNameElement.textContent = `Uploaded Folder: ${folderName}`;
+    document.getElementById('uploadButtonContainer').appendChild(folderNameElement);
 
-  // フォルダ名を表示する要素を作成
-  const folderNameElement = document.createElement('div');
-  folderNameElement.id = 'uploadedFolderName';
-  folderNameElement.textContent = `Uploaded Folder: ${directoryHandle.name}`;
-
-  // uploadButtonContainer にフォルダ名を表示する要素を追加
-  const uploadButtonContainer = document.getElementById('uploadButtonContainer');
-  uploadButtonContainer.appendChild(folderNameElement);
-
-  // フォルダ内のファイルをアップロード
-  const files = []; // ファイルの配列
-  for await (const entry of directoryHandle.values()) {
-    if (entry.kind === 'file') {
-      const file = await entry.getFile();
-      const fileData = await file.arrayBuffer();
-      files.push({ fileName: file.name, fileData }); // ファイル名とデータを追加
+    const files = [];
+    for await (const entry of directoryHandle.values()) {
+      if (entry.kind === 'file') {
+        const file = await entry.getFile();
+        if (file.size <= 1024 * 1024) { // 1MB
+          const fileData = await file.arrayBuffer();
+          files.push({ fileName: file.name, fileData });
+        } else {
+          console.error(`アップロードする画像は1MB未満にしてください (画像名: ${file.name})`);
+        }
+      }
     }
-  }
 
-  // フォルダアップロードイベントをサーバーに送信
-  socket.emit('uploadFolder', {
-    projectName: projectName,
-    originalFolderName: directoryHandle.name,
-    files: files // ファイルの配列を送信
-  });
+    socket.emit('uploadFolder', {
+      projectName,
+      originalFolderName: folderName,
+      files
+    });
+  } catch (error) {
+    handleError(error, 'フォルダのアップロードに失敗しました');
+  }
 }
 
-
-// ラベル削除ボタンのクリックイベント
+/**
+ * ラベル削除ボタンクリックイベントのハンドラー
+ * @param {Event} event - クリックイベント
+ */
 async function handleLabelDeleteClick(event) {
   const { projectName, labelName } = event.target.dataset;
   const labelContainer = event.target.closest('.label-container');
 
   try {
-    // ラベル削除イベントをサーバーに送信
     socket.emit('deleteLabel', { projectName, labelName });
-
-    // サーバーからのレスポンスを待つ
     await new Promise((resolve, reject) => {
-      socket.on('deleteLabelSuccess', (data) => {
+      socket.once('deleteLabelSuccess', (data) => {
         console.log(data.message);
         labelContainer.remove();
-        resolve(); // 成功したら Promise を解決
+        resolve();
       });
 
-      socket.on('deleteLabelError', (data) => {
+      socket.once('deleteLabelError', (data) => {
         handleError(data.error, data.details);
-        reject(new Error(data.error)); // 失敗したら Promise を拒否
+        reject(new Error(data.error));
       });
     });
   } catch (error) {
@@ -487,71 +539,65 @@ async function handleLabelDeleteClick(event) {
   }
 }
 
-// DELETEボタンのクリックイベント
+/**
+ * DELETEボタンクリックイベントのハンドラー
+ * @param {Event} event - クリックイベント
+ */
 async function handleDeleteButtonClick(event) {
   const projectName = document.getElementById("projectLink").textContent.trim();
   const selectedImageCards = document.querySelectorAll('.image-card.selected');
 
   try {
-    // 選択されたすべての画像カードを削除
     await Promise.all(
       Array.from(selectedImageCards).map(async (imageCard) => {
         const { imageName, labelName } = imageCard.dataset;
-
-        // 画像削除イベントをサーバーに送信
         socket.emit('deleteImage', { projectName, imageName, labelName });
 
-        // サーバーからのレスポンスを待つ
         await new Promise((resolve, reject) => {
-          socket.on('deleteImageSuccess', (data) => {
+          socket.once('deleteImageSuccess', (data) => {
             console.log(data.message);
             imageCard.remove();
             updateLabelImageCount(labelName);
-            resolve(); // 成功したら Promise を解決
+            resolve();
           });
 
-          socket.on('deleteImageError', (data) => {
+          socket.once('deleteImageError', (data) => {
             handleError(data.error, data.details);
-            reject(new Error(data.error)); // 失敗したら Promise を拒否
+            reject(new Error(data.error));
           });
         });
       })
     );
-
-     // すべての画像の削除処理が完了したことをサーバーに通知
     socket.emit('deleteImageComp'); 
   } catch (error) {
     handleError(error, '画像の削除に失敗しました');
   }
 }
 
-
-// ラベル追加フォームの表示/非表示を切り替える関数
+/**
+ * ラベル追加フォームの表示/非表示切替関数
+ */
 function toggleAddLabelForm() {
   const addLabelForm = document.querySelector('.add-label-form');
-  addLabelForm.style.display = addLabelForm.style.display === 'block' ? 'none' : 'block';
+  toggleElementDisplay(addLabelForm);
 }
 
-// "Train" ボタンの ▷ マークのクリックイベントハンドラ
+/**
+ * "Train" ボタンクリックイベントのハンドラー
+ */
 function handleTrainStartClick() {
   const projectName = document.getElementById("projectLink").textContent.trim();
-  const trainStartIcon = document.getElementById('trainStartIcon'); // ▷ マークの要素を取得
-
-  // 学習開始時に ▷ マークを ▶ に変更
+  const trainStartIcon = document.getElementById('trainStartIcon');
   trainStartIcon.textContent = '▶';
-
-  socket.emit('yourBeginLearnMsg', {
-    projectName: projectName,
-  });
+  socket.emit('yourBeginLearnMsg', { projectName });
 }
 
-// 新しいラベルを作成する関数
+/**
+ * 新しいラベル作成関数
+ */
 async function createNewLabel() {
-  const newLabelNameInput = document.getElementById('newLabelName');
-  const newLabelName = newLabelNameInput.value.trim();
-  const imageGrid = document.getElementById('imageGrid');
-
-  if (newLabelName === '') {
+  const newLabelName = document.getElementById('newLabelName').value.trim();
+  if (!newLabelName) {
     alert('ラベル名を入力してください');
     return;
   }
@@ -559,29 +605,19 @@ async function createNewLabel() {
   const projectName = document.getElementById("projectLink").textContent.trim();
 
   try {
-    // ラベル作成イベントをサーバーに送信
     socket.emit('createLabel', { projectName, labelName: newLabelName });
-
-    // サーバーからのレスポンスを待つ
     await new Promise((resolve, reject) => {
-      socket.on('createLabelSuccess', (data) => {
+      socket.once('createLabelSuccess', (data) => {
         console.log(data.message);
-
-        // 新しいラベルコンテナを生成
         const newLabelContainer = createLabelContainer(newLabelName);
-
-        // imageGridに新しいラベルコンテナを追加
-        imageGrid.appendChild(newLabelContainer);
-
-        // 入力欄をクリア
-        newLabelNameInput.value = '';
-
-        resolve(); // 成功したら Promise を解決
+        document.getElementById('imageGrid').appendChild(newLabelContainer);
+        document.getElementById('newLabelName').value = '';
+        resolve();
       });
 
-      socket.on('createLabelError', (data) => {
+      socket.once('createLabelError', (data) => {
         handleError(data.error, data.details);
-        reject(new Error(data.error)); // 失敗したら Promise を拒否
+        reject(new Error(data.error));
       });
     });
   } catch (error) {
@@ -589,259 +625,284 @@ async function createNewLabel() {
   }
 }
 
-
-// アップロードボタンのクリック処理
+/**
+ * アップロードボタンクリック処理のハンドラー
+ * @param {Event} event - クリックイベント
+ */
 function handleUploadButtonClick(event) {
   const projectName = document.getElementById("projectLink").textContent.trim();
-  const labelContainer = event.target.closest('.label-container');
-  const targetLabel = labelContainer.dataset.labelId;
-  const targetDirectory = `/projects/${projectName}/${targetLabel}`;
+  const labelName = event.target.closest('.label-container').dataset.labelId;
+  const targetDirectory = `/projects/${projectName}/${labelName}`;
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.multiple = true;
   fileInput.style.display = 'none';
-
-  fileInput.addEventListener('change', (event) => {
-    const files = event.target.files;
-    uploadImages(files, targetDirectory);
-  });
-
+  fileInput.addEventListener('change', (e) => uploadImages(e.target.files, targetDirectory));
   document.body.appendChild(fileInput);
   fileInput.click();
   document.body.removeChild(fileInput);
 }
 
-
-// "Label" 文字のクリックイベントリスナーを設定する関数
-function setupSidebarLabelToggle() {
-  const sidebarLabel = document.getElementById('sidebarLabel');
+/**
+ * サイドバーラベル表示関数
+ * @param {Array} labelList - ラベルリスト
+ */
+function displaySidebarLabelList(labelList) {
   const sidebarLabelList = document.getElementById('sidebarLabelList');
-  const labelToggleIcon = document.getElementById('labelToggleIcon');
-  const imageList = document.getElementById('imageList');
-  const sidebarCheck = document.getElementById('sidebarCheck'); // sidebar-check 要素を取得
+  sidebarLabelList.innerHTML = '';
 
-  sidebarLabel.addEventListener('click', () => {
-    // ラベル一覧の表示・非表示を切り替え
-    sidebarLabelList.style.display = sidebarLabelList.style.display === 'none' ? 'block' : 'none';
+  // All ラベル
+  const allLabel = document.createElement('div');
+  allLabel.textContent = 'All';
+  allLabel.classList.add('active-click');
+  const allImageCount = document.createElement('div');
+  allImageCount.textContent = `${document.querySelectorAll('.image-card').length} images`;
+  allImageCount.classList.add('image-count');
+  sidebarLabelList.appendChild(allLabel);
+  sidebarLabelList.appendChild(allImageCount);
 
-    // 山括弧の表示を切り替え
-    labelToggleIcon.textContent = sidebarLabelList.style.display === 'block' ? '︿' : '﹀';
-
-    // sidebar-label 要素をアクティブにする
-    sidebarLabel.classList.add('active');
-
-    // sidebar-check 要素を非アクティブにする
-    sidebarCheck.classList.remove('active');
-    document.getElementById('sidebarCheckList').style.display = 'none'; 
-    document.getElementById('checkContent').style.display = 'none';
-
-    // sidebar-label 要素のアクティブ状態に合わせて image-list の表示を切り替え
-    if (sidebarLabel.classList.contains('active')) {
-      imageList.style.display = 'block';
-      document.querySelector('.add-label-container').style.display = 'block'; // addLabelButton を表示
-    } else {
-      imageList.style.display = 'none';
-      document.querySelector('.add-label-container').style.display = 'none'; // addLabelButton を非表示
-    }
-
-    // sidebar-label 要素がアクティブになったので image-list を表示
-    imageList.style.display = 'block'; 
+  allLabel.addEventListener('click', () => {
+    document.querySelectorAll('.label-container').forEach(container => container.style.display = 'block');
+    sidebarLabelList.querySelectorAll('div:not(.image-count)').forEach(label => label.classList.remove('active-click'));
+    allLabel.classList.add('active-click');
+    document.querySelector('.image-list-header').style.display = 'block';
+    updateActiveLabel();
   });
-}
 
-// "Check" 項目のクリックイベントリスナーを設定する関数
-function setupSidebarCheckToggle() {
-  const sidebarCheck = document.getElementById('sidebarCheck');
-  const sidebarCheckList = document.getElementById('sidebarCheckList');
-  const imageList = document.getElementById('imageList');
-  const checkContent = document.getElementById('checkContent');
-  const sidebarLabel = document.getElementById('sidebarLabel'); 
+  // 各ラベルの表示
+  labelList.filter(label => label.isDirectory).forEach(label => {
+    const labelElement = document.createElement('div');
+    labelElement.textContent = label.name;
+    const imageCount = document.createElement('div');
+    imageCount.textContent = `${document.querySelectorAll(`.image-card[data-label-name="${label.name}"]`).length} images`;
+    imageCount.classList.add('image-count');
+    sidebarLabelList.appendChild(labelElement);
+    sidebarLabelList.appendChild(imageCount);
 
-  // "Upload" ボタンを生成 (一度だけ)
-  const uploadButtonContainer = document.getElementById('uploadButtonContainer');
-  const uploadButton = document.createElement('button');
-  uploadButton.textContent = 'Upload';
-  uploadButton.addEventListener('click', handleUploadFolderClick);
-  uploadButtonContainer.appendChild(uploadButton);
-
-  // フォルダ名を表示する領域を生成 (一度だけ)
-  const uploadedFolderList = document.createElement('div');
-  uploadedFolderList.id = 'uploadedFolderList';
-  uploadButtonContainer.appendChild(uploadedFolderList);
-
-  sidebarCheck.addEventListener('click', async () => {
-
-    // 既にアクティブな場合は処理を中断
-    if (sidebarCheck.classList.contains('active')) {
-      return; 
-    }
-
-    // CheckList の表示・非表示を切り替え
-    sidebarCheckList.style.display = sidebarCheckList.style.display === 'none' ? 'block' : 'none';
-
-    // "Check" 項目のアクティブ状態を切り替え
-    sidebarCheck.classList.toggle('active');
-
-    // image-list と check-content の表示を切り替え
-    if (sidebarCheckList.style.display === 'block') {
-      imageList.style.display = 'none';
-      checkContent.style.display = 'block';
-
-      // "Upload" ボタンを表示
-      uploadButton.style.display = 'block'; 
-      
-      // アップロード済みフォルダ名を表示
-      displayUploadedFolderNames();
-
-    } else {
-      imageList.style.display = 'block';
-      checkContent.style.display = 'none';
-
-      // "Upload" ボタンを非表示
-      uploadButton.style.display = 'none'; 
-    }
-
-    // sidebar-label 要素を非アクティブにする
-    sidebarLabel.classList.remove('active');
-    document.getElementById('sidebarLabelList').style.display = 'none'; 
-    document.getElementById('labelToggleIcon').textContent = '﹀';
-  });
-}
-
-// アップロード済みフォルダ名を表示する関数
-async function displayUploadedFolderNames() {
-  const projectName = document.getElementById("projectLink").textContent.trim();
-  const uploadedFolderList = document.getElementById('uploadedFolderList');
-  uploadedFolderList.innerHTML = ''; // 既存のフォルダ名リストをクリア
-
-  try {
-    // サーバーから検証用画像フォルダの一覧を取得
-    const response = await fetch(`/directory?path=projects/${projectName}/verify-data`); 
-    const folderList = await response.json();
-
-    // フォルダ名と画像を表示
-    await Promise.all(
-      folderList.map(async (folder) => {
-        if (folder.isDirectory) {
-          const folderContainer = document.createElement('div');
-          folderContainer.classList.add('uploaded-folder-container');
-
-          // フォルダ名を表示する領域
-          const folderNameContainer = document.createElement('div'); 
-          
-          // フォルダアイコンを追加
-          const folderIcon = document.createElement('span');
-          folderIcon.classList.add('folder-icon');
-          folderIcon.textContent = '📁'; //アイコン
-          folderNameContainer.appendChild(folderIcon);
-
-          const folderNameElement = document.createElement('div');
-          folderNameElement.textContent = folder.name;
-          folderNameContainer.appendChild(folderNameElement); 
-          folderContainer.appendChild(folderNameContainer);
-          
-
-          // "Verify" ボタンを追加
-          const verifyButton = document.createElement('button');
-          verifyButton.textContent = 'Verify';
-          verifyButton.dataset.folderName = folder.name; // フォルダ名をデータ属性に保存
-          verifyButton.addEventListener('click', handleVerifyButtonClick); // クリックイベントリスナーを追加
-          folderNameContainer.appendChild(verifyButton);
-
-          // 画像を表示する領域
-          const uploadedImagesContainer = document.createElement('div'); 
-          uploadedImagesContainer.classList.add('uploaded-images-container'); 
-          // フォルダ内の画像を表示
-          await displayUploadedImages(projectName, folder.name, uploadedImagesContainer); // uploadedImagesContainer に画像を表示
-          folderContainer.appendChild(uploadedImagesContainer); // uploadedImagesContainer を folderContainer に追加
-
-          uploadedFolderList.appendChild(folderContainer);
-        }
-      })
-    );
-  } catch (error) {
-    handleError(error, 'フォルダ一覧の取得に失敗しました。');
-  }
-}
-
-// "Verify" ボタンのクリックイベントハンドラ
-async function handleVerifyButtonClick(event) {
-  const projectName = document.getElementById("projectLink").textContent.trim();
-  const folderName = event.target.dataset.folderName;
-
-  // 検証開始イベントをサーバーに送信
-  socket.emit('startVerification', { projectName, folderName });
-}
-
-
-// アップロード済みフォルダ内の画像を表示する関数
-async function displayUploadedImages(projectName, folderName, container) {
-  try {
-    // サーバーから画像一覧を取得
-    const response = await fetch(`/directory?path=projects/${projectName}/verify-data/${folderName}`);
-    const imageList = await response.json();
-
-    // 画像を表示
-    imageList.forEach(image => {
-      if (!image.isDirectory) {
-        const imagePlaceholder = document.createElement('div');
-        imagePlaceholder.classList.add('image-placeholder');
-        const imageCard = document.createElement('div');
-        imageCard.classList.add('uploaded-image-card');
-        imageCard.dataset.imageName = image.name;
-        imageCard.appendChild(imagePlaceholder);
-
-        // 画像を表示
-        const imageSrc = `/projects/${projectName}/verify-data/${folderName}/${encodeURIComponent(image.name)}`; // 画像パスを変更
-        imagePlaceholder.style.backgroundImage = `url("${imageSrc}")`;
-
-        // 画像名を表示するspan要素を追加
-        const imageNameSpan = document.createElement('span');
-        imageNameSpan.classList.add('image-name');
-        imageNameSpan.style.display = 'none'; // 初期表示は非表示
-        imageCard.appendChild(imageNameSpan);
-
-        // ホバーイベントリスナーを追加
-        imageCard.addEventListener('mouseover', (event) => {
-          imageNameSpan.textContent = image.name;
-          imageNameSpan.style.display = 'block';
-          imageCard.classList.add('hovered'); // ホバー時にクラスを追加
-        });
-
-        imageCard.addEventListener('mouseout', (event) => {
-          imageNameSpan.style.display = 'none';
-          imageCard.classList.remove('hovered'); // ホバー時にクラスを削除
-        });
-
-        container.appendChild(imageCard);
-      }
+    labelElement.addEventListener('click', () => {
+      document.querySelectorAll('.label-container').forEach(container => {
+        container.style.display = container.dataset.labelId === label.name ? 'block' : 'none'; 
+      });
+      sidebarLabelList.querySelectorAll('div:not(.image-count)').forEach(lbl => lbl.classList.remove('active-click'));
+      labelElement.classList.add('active-click');
+      updateActiveLabel();
     });
-  } catch (error) {
-    handleError(error, '画像一覧の取得に失敗しました。');
+  });
+}
+
+/**
+ * アクティブラベル更新関数
+ */
+function updateActiveLabel() {
+  const labelContainers = document.querySelectorAll('.label-container');
+  const sidebarLabelList = document.getElementById('sidebarLabelList');
+  const sidebarLabels = sidebarLabelList.querySelectorAll('div:not(.image-count)');
+  sidebarLabels.forEach(label => label.classList.remove('active-scroll'));
+
+  if (window.scrollY === 0 && sidebarLabels[0].classList.contains('active-click')) { 
+    sidebarLabels[0].classList.add('active-scroll');
+    return;
+  }
+
+  let activeLabel = null;
+  for (const container of labelContainers) {
+    const rect = container.getBoundingClientRect();
+    if (rect.top <= 250 && rect.bottom > 250) {
+      activeLabel = container.dataset.labelId;
+      break;
+    }
+  }
+
+  if (activeLabel) {
+    const activeSidebarLabel = Array.from(sidebarLabels).find(label => label.textContent === activeLabel);
+    activeSidebarLabel?.classList.add('active-scroll');
   }
 }
 
-// 画像のホバーイベントリスナーを設定する関数
+/**
+ * イベントリスナー設定関数
+ */
+function setupEventListeners() {
+  // アップロードボタン
+  document.querySelectorAll('.upload-button').forEach(button => button.addEventListener('click', handleUploadButtonClick));
+  
+  // 画像ラベルクリック
+  document.querySelectorAll('.image-label').forEach(label => label.addEventListener('click', handleLabelClick));
+  
+  // ラベル項目クリック
+  document.querySelectorAll('.label-item').forEach(labelItem => labelItem.addEventListener('click', handleLabelItemClick));
+  
+  // 画像削除ボタン
+  document.querySelectorAll('.delete-button').forEach(button => button.addEventListener('click', handleDeleteButtonClick));
+  
+  // ラベル削除ボタン
+  document.querySelectorAll('.label-delete-button').forEach(button => button.addEventListener('click', handleLabelDeleteClick));
+  
+  // ラベル追加ボタン
+  document.getElementById('addLabelButton').addEventListener('click', toggleAddLabelForm);
+  
+  // トレーニング開始ボタン
+  document.getElementById('LearnStartButton').addEventListener('click', handleTrainStartClick);
+  
+  // 新しいラベル作成ボタン
+  document.getElementById('createNewLabelButton').addEventListener('click', createNewLabel);
+
+  // ハンバーガーメニュークリック
+  const hamburgerMenu = document.getElementById('hamburgerMenu');
+  const menu = document.getElementById('menu');
+  hamburgerMenu.addEventListener('click', () => toggleElementDisplay(menu));
+
+  // ホームリンククリック
+  document.getElementById('homeLink').addEventListener('click', () => {
+    window.location.href = '/';
+  });
+}
+
+// ==============================
+// 5. 画像アップロード
+// ==============================
+
+/**
+ * 画像アップロード処理
+ * @param {FileList} files - アップロードするファイルリスト
+ * @param {string} targetDirectory - アップロード先のディレクトリ
+ */
+async function uploadImages(files, targetDirectory) {
+  const [_, projectName, labelName] = targetDirectory.split('/');
+  const uploadPromises = [];
+
+  for (const file of files) {
+    if (file.size > 1024 * 1024) {
+      console.error(`アップロードする画像は1MB未満にしてください (画像名: ${file.name})`);
+      continue;
+    }
+    try {
+      const fileData = await file.arrayBuffer();
+      uploadPromises.push(socket.emit('upload', {
+        projectName,
+        labelName,
+        fileData,
+        fileName: file.name,
+      }));
+    } catch (error) {
+      handleError(error, '画像のアップロード中にエラーが発生しました');
+    }
+  }
+
+  await Promise.all(uploadPromises);
+  socket.emit('uploadComp'); 
+}
+
+/**
+ * 画像を移動する関数
+ * @param {string} projectName - プロジェクト名
+ * @param {string} imageName - 画像名
+ * @param {string} sourceLabel - 元のラベル
+ * @param {string} targetLabel - 移動先のラベル
+ * @returns {Promise<void>}
+ */
+async function moveImage(projectName, imageName, sourceLabel, targetLabel) {
+  socket.emit('moveImage', { projectName, imageName, sourceLabel, targetLabel });
+
+  return new Promise((resolve, reject) => {
+    socket.once('moveImageSuccess', (data) => {
+      console.log(data.message);
+      resolve();
+    });
+
+    socket.once('moveImageError', (data) => {
+      handleError(data.error, data.details);
+      reject(new Error(data.error));
+    });
+  });
+}
+
+// ==============================
+// 6. 初期化
+// ==============================
+
+/**
+ * 初期化関数
+ */
+async function init() {
+  await setupUI();
+  socket = io(API_BASE_URL);
+  console.log('サーバーに接続しました');
+
+  // ソケットイベントリスナー設定
+  socket.on('uploadSuccess', (data) => console.log(data.message, data.fileName));
+  socket.on('uploadError', (data) => handleError(data.error, data.details));
+  socket.on('updateProgress', (progress) => updateProgress(progress));
+  socket.on('learnCompleted', (data) => {
+    console.log(data.message);
+    alert(data.message);
+    document.getElementById('trainStartIcon').textContent = '▷'; 
+  });
+  socket.on('learnError', (data) => handleError(data.error, data.details));
+  socket.on('verificationResult', (data) => {
+    const { projectName, folderName, result } = data;
+    console.log('検証結果:', result); 
+    displayVerificationResult(projectName, folderName, result);
+  });
+  socket.on('image-data-changed', async () => {
+    updateImageCount();
+    await displayEachLabelImages();
+    const projectName = document.getElementById("projectLink").textContent.trim();
+    displaySidebarLabelList(await fetchLabelList(projectName));
+    updateActiveLabel();
+  });
+}
+
+// DOMContentLoadedイベントリスナー設定
+document.addEventListener('DOMContentLoaded', init);
+
+// ==============================
+// UI 初期設定
+// ==============================
+
+/**
+ * UI 初期設定関数
+ * @returns {Promise<void>}
+ */
+async function setupUI() {
+  setupEventListeners();
+  setupImageHoverEvents();
+  await displayEachLabelImages();
+  setupSidebarLabelToggle();
+  setupSidebarCheckToggle();
+  const projectName = document.getElementById("projectLink").textContent.trim();
+  displaySidebarLabelList(await fetchLabelList(projectName));
+  window.addEventListener('scroll', updateActiveLabel);
+  updateActiveLabel(); 
+
+  // サイドバー初期状態設定
+  document.getElementById('sidebarLabel').classList.add('active');
+  document.getElementById('imageList').style.display = 'block';
+
+  await displayProgress(); 
+}
+
+// ==============================
+// 画像のホバーイベント
+// ==============================
+
+/**
+ * 画像のホバーイベント設定関数
+ */
 function setupImageHoverEvents() {
   const imageGrid = document.getElementById('imageGrid');
   if (!imageGrid) return;
 
-  // 複数選択された画像を格納するセット
   const selectedImages = new Set();
 
   // マウスオーバー時の処理
   imageGrid.addEventListener('mouseover', (event) => {
     const imageCard = event.target.closest('.image-card');
     if (imageCard) {
-      const imageNameSpan = imageCard.querySelector('.image-name');
-      const deleteButton = imageCard.querySelector('.delete-button');
-      imageNameSpan.textContent = imageCard.dataset.imageName;
-      imageNameSpan.style.display = 'block';
-
-      // 選択状態にある場合のみ Delete ボタンを表示
+      imageCard.querySelector('.image-name').style.display = 'block';
       if (imageCard.classList.contains('selected')) {
-        deleteButton.style.display = 'block';
+        imageCard.querySelector('.delete-button').style.display = 'block';
       }
     }
   });
@@ -850,100 +911,92 @@ function setupImageHoverEvents() {
   imageGrid.addEventListener('mouseout', (event) => {
     const imageCard = event.target.closest('.image-card');
     if (imageCard) {
-      const imageNameSpan = imageCard.querySelector('.image-name');
-      const deleteButton = imageCard.querySelector('.delete-button');
-      imageNameSpan.style.display = 'none';
-
-      // Delete ボタンを非表示にする
-      deleteButton.style.display = 'none';
+      imageCard.querySelector('.image-name').style.display = 'none';
+      imageCard.querySelector('.delete-button').style.display = 'none';
     }
   });
 
-  // 画像カードのクリックイベントリスナー
+  // クリック時の処理
   imageGrid.addEventListener('click', (event) => {
-     if (event.target.classList.contains('image-label')) {
-        event.stopPropagation();
-        return; // 以降の処理をスキップ
-      }
-  
-    if (event.target.classList.contains('image-card')) {
-      const imageCard = event.target;
-      const imageName = imageCard.dataset.imageName;
-      const deleteButton = imageCard.querySelector('.delete-button'); // Delete ボタンを取得
-      const labelSpan = imageCard.querySelector('.image-label'); // ラベルを取得
-  
-      // Ctrlキーが押されている場合は複数選択
-      if (event.ctrlKey) {
-        if (selectedImages.has(imageName)) {
-          // 既に選択されている場合は選択解除
-          selectedImages.delete(imageName);
-          imageCard.classList.remove('selected');
-          deleteButton.style.display = 'none'; // 選択解除時に Delete ボタンを非表示
-          labelSpan.style.display = 'none'; // 選択解除時にラベルを非表示
-        } else {
-          // 選択されていない場合は選択
-          selectedImages.add(imageName);
-          imageCard.classList.add('selected');
-          deleteButton.style.display = 'block'; // 選択時に Delete ボタンを表示
-          labelSpan.style.display = 'block'; // 選択解除時にラベルを非表示
-        }
+    if (event.target.classList.contains('image-label')) {
+      event.stopPropagation();
+      return;
+    }
+
+    const imageCard = event.target.closest('.image-card');
+    if (!imageCard) return;
+
+    const imageName = imageCard.dataset.imageName;
+    const deleteButton = imageCard.querySelector('.delete-button');
+    const labelSpan = imageCard.querySelector('.image-label');
+
+    if (event.ctrlKey) {
+      // Ctrlキー押下時の選択・解除
+      if (selectedImages.has(imageName)) {
+        selectedImages.delete(imageName);
+        imageCard.classList.remove('selected');
+        deleteButton.style.display = 'none';
+        labelSpan.style.display = 'none';
       } else {
-        // Ctrlキーが押されていない場合は単一選択
-        selectedImages.clear();
-        document.querySelectorAll('.image-card').forEach(card => {
-          card.classList.remove('selected');
-          card.querySelector('.delete-button').style.display = 'none'; // すべての Delete ボタンを非表示
-          card.querySelector('.image-label').style.display = 'none'; // すべてのラベルを非表示
-        });
         selectedImages.add(imageName);
         imageCard.classList.add('selected');
-        deleteButton.style.display = 'block'; // 選択時に Delete ボタンを表示
-        labelSpan.style.display = 'block'; // 選択時にラベルを表示
+        deleteButton.style.display = 'block';
+        labelSpan.style.display = 'block';
       }
-  
-      console.log('選択された画像:', selectedImages); // 選択された画像の確認
+    } else {
+      // 通常クリック時の単一選択
+      selectedImages.clear();
+      document.querySelectorAll('.image-card').forEach(card => {
+        card.classList.remove('selected');
+        card.querySelector('.delete-button').style.display = 'none';
+        card.querySelector('.image-label').style.display = 'none';
+      });
+      selectedImages.add(imageName);
+      imageCard.classList.add('selected');
+      deleteButton.style.display = 'block';
+      labelSpan.style.display = 'block';
     }
+
+    console.log('選択された画像:', Array.from(selectedImages));
   });
-  
-   // ESCキーのイベントリスナー
-   document.addEventListener('keydown', (event) => {
+
+  // Escapeキー押下時の選択解除
+  document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && selectedImages.size > 0) {
-      // 複数選択状態を解除
       selectedImages.forEach(imageName => {
         const imageCard = document.querySelector(`.image-card[data-image-name="${imageName}"]`);
-        const labelSpan = imageCard.querySelector('.image-label'); // ラベルを取得
         if (imageCard) {
           imageCard.classList.remove('selected');
-          // Delete ボタンを非表示にする
-          imageCard.querySelector('.delete-button').style.display = 'none'; 
-          labelSpan.style.display = 'none'; // 選択解除時にラベルを非表示
+          imageCard.querySelector('.delete-button').style.display = 'none';
+          imageCard.querySelector('.image-label').style.display = 'none';
         }
       });
       selectedImages.clear();
     }
   });
-   // 画像カードの右クリックイベントリスナー
-   imageGrid.addEventListener('contextmenu', (event) => {
-    if (event.target.classList.contains('image-card')) {
-      event.preventDefault(); // 右クリックメニューの表示を抑制
-      const imageCard = event.target;
-      enlargeImage(imageCard); // imageCard を引数として渡す
+
+  // 右クリックメニューの無効化と画像拡大表示
+  imageGrid.addEventListener('contextmenu', (event) => {
+    const imageCard = event.target.closest('.image-card');
+    if (imageCard) {
+      event.preventDefault();
+      const projectName = document.getElementById("projectLink").textContent.trim();
+      const labelName = imageCard.dataset.labelName;
+      const imageName = imageCard.dataset.imageName;
+      const imageSrc = `http://localhost:3000/images?path=/projects/${projectName}/training-data/${labelName}/${encodeURIComponent(imageName)}`;
+      enlargeImage(imageSrc);
     }
   });
 
-  // 画像カード以外をクリックしたときのイベントリスナー
+  // 画像外クリック時の選択解除
   document.addEventListener('click', (event) => {
-    // クリックされた要素が画像カードでない場合
-    if (!event.target.classList.contains('image-card')) {
-      // 複数選択状態を解除
+    if (!event.target.closest('.image-card')) {
       selectedImages.forEach(imageName => {
         const imageCard = document.querySelector(`.image-card[data-image-name="${imageName}"]`);
-        const labelSpan = imageCard.querySelector('.image-label'); // ラベルを取得
         if (imageCard) {
           imageCard.classList.remove('selected');
-          // Delete ボタンを非表示にする
-          imageCard.querySelector('.delete-button').style.display = 'none'; 
-          labelSpan.style.display = 'none'; // 選択解除時にラベルを非表示
+          imageCard.querySelector('.delete-button').style.display = 'none';
+          imageCard.querySelector('.image-label').style.display = 'none';
         }
       });
       selectedImages.clear();
@@ -951,447 +1004,338 @@ function setupImageHoverEvents() {
   });
 }
 
+// ==============================
+// 画像拡大表示
+// ==============================
 
-// 画像を拡大表示する関数
-async function enlargeImage(imageCard) {
-  const imageContainer = document.createElement('div');
-  imageContainer.classList.add('enlarged-image-container');
+/**
+ * 画像を拡大表示する関数
+ * @param {string} imageSrc - 画像のソースURL
+ */
+async function enlargeImage(imageSrc) {
+  let imageContainer = document.querySelector('.enlarged-image-container');
 
-  // 閉じるボタンを追加
-  const closeButton = document.createElement('button');
-  closeButton.classList.add('close-button');
-  closeButton.textContent = '×';
-  closeButton.addEventListener('click', () => {
-    imageContainer.remove();
-  });
-  imageContainer.appendChild(closeButton);
+  if (!imageContainer) {
+    // 拡大画像コンテナが存在しない場合、新規作成
+    imageContainer = document.createElement('div');
+    imageContainer.classList.add('enlarged-image-container');
 
-  const imagePlaceholder = document.createElement('div');
-  imagePlaceholder.classList.add('enlarged-image-placeholder');
-  imageContainer.appendChild(imagePlaceholder);
+    // 閉じるボタン
+    const closeButton = document.createElement('button');
+    closeButton.classList.add('close-button');
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', () => imageContainer.remove());
+    imageContainer.appendChild(closeButton);
 
-  // 画像カードから画像の src 属性を取得して拡大表示用のコンテナに設定
-  const imageSrc = imageCard.querySelector('img').src; 
-  imagePlaceholder.style.backgroundImage = `url(${imageSrc})`;
+    // 画像プレースホルダー
+    const imagePlaceholder = document.createElement('div');
+    imagePlaceholder.classList.add('enlarged-image-placeholder');
+    imagePlaceholder.style.backgroundRepeat = 'no-repeat';
+    imagePlaceholder.style.backgroundSize = 'contain';
+    imageContainer.appendChild(imagePlaceholder);
 
-  // body に画像コンテナを追加
-  document.body.appendChild(imageContainer);
+    document.body.appendChild(imageContainer);
+  } else {
+    // 既存のプレースホルダーをリセット
+    const imagePlaceholder = imageContainer.querySelector('.enlarged-image-placeholder');
+    imagePlaceholder.style.backgroundImage = '';
+  }
+
+  try {
+    const imagePlaceholder = imageContainer.querySelector('.enlarged-image-placeholder');
+    await lazyLoadImage(imageSrc, 1.0, imagePlaceholder);
+  } catch (error) {
+    handleError(error, "画像の取得に失敗しました。");
+    imageContainer.querySelector('.enlarged-image-placeholder').dispatchEvent(new CustomEvent('loadingComplete'));
+  } 
 }
 
-// イベントリスナーの設定関数
-function setupEventListeners() {
-  document.querySelectorAll('.upload-button').forEach(button => {
-    button.addEventListener('click', handleUploadButtonClick);
-  });
+// ==============================
+// サイドバートグル
+// ==============================
 
-  document.querySelectorAll('.image-label').forEach(label => {
-    label.addEventListener('click', handleLabelClick);
-  });
-
-  document.querySelectorAll('.label-item').forEach(labelItem => {
-    labelItem.addEventListener('click', handleLabelItemClick);
-  });
-
-  document.querySelectorAll('.delete-button').forEach(button => {
-    button.addEventListener('click', handleDeleteButtonClick);
-  });
-
-  document.querySelectorAll('.label-delete-button').forEach(button => {
-    button.addEventListener('click', handleLabelDeleteClick);
-  });
-
-  document.getElementById('addLabelButton').addEventListener('click', toggleAddLabelForm);
-
-  document.getElementById('LearnStartButton').addEventListener('click', handleTrainStartClick);
-
-  document.getElementById('createNewLabelButton').addEventListener('click', createNewLabel);
-  const hamburgerMenu = document.getElementById('hamburgerMenu');
-  const menu = document.getElementById('menu');
-  hamburgerMenu.addEventListener('click', () => {
-    toggleElementDisplay(menu);
-  });
-  document.getElementById('homeLink').addEventListener('click', () => {
-    window.location.href = '/';
-  });
-}
-
-
-
-/// サイドバーのラベル一覧と画像数を表示する関数
-function displaySidebarLabelList(labelList) {
+/**
+ * サイドバーラベルのトグル設定関数
+ */
+function setupSidebarLabelToggle() {
+  const sidebarLabel = document.getElementById('sidebarLabel');
   const sidebarLabelList = document.getElementById('sidebarLabelList');
-  sidebarLabelList.innerHTML = ''; // 既存のラベル一覧をクリア
+  const labelToggleIcon = document.getElementById('labelToggleIcon');
+  const imageList = document.getElementById('imageList');
+  const sidebarCheck = document.getElementById('sidebarCheck');
 
-  // All を追加
-  const allLabel = document.createElement('div');
-  allLabel.textContent = 'All';
-  allLabel.classList.add('active-click'); // 初期状態でクリックされた状態にする
-  const allImageCount = document.createElement('div');
-  allImageCount.textContent = `${document.querySelectorAll('.image-card').length} images`;
-  allImageCount.classList.add('image-count'); // 画像数表示用のクラスを追加
-  sidebarLabelList.appendChild(allLabel);
-  sidebarLabelList.appendChild(allImageCount);
-
-  // All ラベルのクリックイベントリスナー
-  allLabel.addEventListener('click', () => {
-    const labelContainers = document.querySelectorAll('.label-container');
-    labelContainers.forEach(container => {
-      container.style.display = 'block'; // すべてのラベルコンテナを表示
-    });
-
-    // すべてのサイドバーラベルから active-click クラスを削除
-    const sidebarLabels = sidebarLabelList.querySelectorAll('div:not(.image-count)');
-    sidebarLabels.forEach(label => label.classList.remove('active-click'));
-
-    // All ラベルに active-click クラスを追加
-    allLabel.classList.add('active-click');
-
-    // image-list-header を表示
-    document.querySelector('.image-list-header').style.display = 'block';
-
-    // アクティブなラベルを更新 (スクロール位置による)
-    updateActiveLabel();
+  sidebarLabel.addEventListener('click', () => {
+    toggleElementDisplay(sidebarLabelList);
+    labelToggleIcon.textContent = sidebarLabelList.style.display === 'block' ? '︿' : '﹀';
+    sidebarLabel.classList.add('active');
+    sidebarCheck.classList.remove('active');
+    document.getElementById('sidebarCheckList').style.display = 'none'; 
+    document.getElementById('checkContent').style.display = 'none';
+    imageList.style.display = sidebarLabel.classList.contains('active') ? 'block' : 'none';
+    document.querySelector('.add-label-container').style.display = sidebarLabel.classList.contains('active') ? 'block' : 'none';
   });
+}
 
-  // ラベルごとに追加
-  labelList.forEach(label => {
-    if (label.isDirectory) {
-      const labelElement = document.createElement('div');
-      labelElement.textContent = label.name;
-      const imageCount = document.createElement('div');
-      imageCount.textContent = `${document.querySelectorAll(`.image-card[data-label-name="${label.name}"]`).length} images`;
-      imageCount.classList.add('image-count'); // 画像数表示用のクラスを追加
-      sidebarLabelList.appendChild(labelElement);
-      sidebarLabelList.appendChild(imageCount);
+/**
+ * サイドバーのチェックトグル設定関数
+ */
+function setupSidebarCheckToggle() {
+  const sidebarCheck = document.getElementById('sidebarCheck');
+  const sidebarCheckList = document.getElementById('sidebarCheckList');
+  const imageList = document.getElementById('imageList');
+  const checkContent = document.getElementById('checkContent');
+  const sidebarLabel = document.getElementById('sidebarLabel');
 
-      // ラベル要素のクリックイベントリスナー
-      labelElement.addEventListener('click', () => {
-        
-        const labelContainers = document.querySelectorAll('.label-container');
-        labelContainers.forEach(container => {
-          // クリックされたラベルのコンテナのみ表示、それ以外は非表示
-          container.style.display = container.dataset.labelId === label.name ? 'block' : 'none'; 
+  const uploadButtonContainer = document.getElementById('uploadButtonContainer');
+  const uploadButton = document.createElement('button');
+  uploadButton.textContent = 'Upload';
+  uploadButton.addEventListener('click', handleUploadFolderClick);
+  uploadButtonContainer.appendChild(uploadButton);
+
+  const uploadedFolderList = document.createElement('div');
+  uploadedFolderList.id = 'uploadedFolderList';
+  uploadButtonContainer.appendChild(uploadedFolderList);
+
+  sidebarCheck.addEventListener('click', async () => {
+    if (sidebarCheck.classList.contains('active')) return; 
+
+    toggleElementDisplay(sidebarCheckList);
+    sidebarCheck.classList.toggle('active');
+
+    if (sidebarCheckList.style.display === 'block') {
+      imageList.style.display = 'none';
+      checkContent.style.display = 'block';
+      uploadButton.style.display = 'block'; 
+      await displayUploadedFolderNames();
+    } else {
+      imageList.style.display = 'block';
+      checkContent.style.display = 'none';
+      uploadButton.style.display = 'none'; 
+    }
+
+    sidebarLabel.classList.remove('active');
+    document.getElementById('sidebarLabelList').style.display = 'none'; 
+    document.getElementById('labelToggleIcon').textContent = '﹀';
+  });
+}
+
+// ==============================
+// アップロード済みフォルダ名表示
+// ==============================
+
+/**
+ * アップロード済みフォルダ名を表示する関数
+ */
+async function displayUploadedFolderNames() {
+  const projectName = document.getElementById("projectLink").textContent.trim();
+  const uploadedFolderList = document.getElementById('uploadedFolderList');
+  uploadedFolderList.innerHTML = '';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/directory?path=projects/${projectName}/verify-data`);
+    const folderList = await response.json();
+
+    await Promise.all(
+      folderList.filter(folder => folder.isDirectory).map(async (folder) => {
+        const folderContainer = document.createElement('div');
+        folderContainer.classList.add('uploaded-folder-container');
+
+        const folderNameContainer = document.createElement('div'); 
+        const folderIcon = document.createElement('span');
+        folderIcon.classList.add('folder-icon');
+        folderIcon.textContent = '📁';
+        folderNameContainer.appendChild(folderIcon);
+
+        const folderNameElement = document.createElement('div');
+        folderNameElement.textContent = folder.name;
+        folderNameContainer.appendChild(folderNameElement); 
+        folderContainer.appendChild(folderNameContainer);
+
+        const verifyButton = document.createElement('button');
+        verifyButton.textContent = 'Verify';
+        verifyButton.dataset.folderName = folder.name;
+        verifyButton.addEventListener('click', handleVerifyButtonClick);
+        folderNameContainer.appendChild(verifyButton);
+
+        const uploadedImagesContainer = document.createElement('div'); 
+        uploadedImagesContainer.classList.add('uploaded-images-container'); 
+        await displayUploadedImages(projectName, folder.name, uploadedImagesContainer); 
+        folderContainer.appendChild(uploadedImagesContainer);
+
+        uploadedFolderList.appendChild(folderContainer);
+      })
+    );
+  } catch (error) {
+    handleError(error, 'フォルダ一覧の取得に失敗しました。');
+  }
+}
+
+/**
+ * "Verify" ボタンクリックイベントのハンドラー
+ * @param {Event} event - クリックイベント
+ */
+async function handleVerifyButtonClick(event) {
+  const projectName = document.getElementById("projectLink").textContent.trim();
+  const folderName = event.target.dataset.folderName;
+  socket.emit('startVerification', { projectName, folderName });
+}
+
+/**
+ * アップロード済みフォルダ内の画像を表示する関数
+ * @param {string} projectName - プロジェクト名
+ * @param {string} folderName - フォルダ名
+ * @param {HTMLElement} container - 画像を表示するコンテナ
+ */
+async function displayUploadedImages(projectName, folderName, container) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/directory?path=projects/${projectName}/verify-data/${folderName}`);
+    const imageList = await response.json();
+
+    for (const image of imageList) {
+      if (!image.isDirectory) {
+        const imageCard = createImageCard(projectName, folderName, image.name);
+        const imageSrc = `/projects/${projectName}/verify-data/${folderName}/${encodeURIComponent(image.name)}`;
+        lazyLoadImage(imageSrc, imageScale, imageCard.querySelector('.image-placeholder')).catch(() => {});
+        imageCard.addEventListener('contextmenu', (event) => {
+          event.preventDefault();
+          enlargeImage(imageSrc);
         });
-
-        // すべてのサイドバーラベルから active-click クラスを削除
-        const sidebarLabels = sidebarLabelList.querySelectorAll('div:not(.image-count)');
-        sidebarLabels.forEach(label => label.classList.remove('active-click'));
-
-        // クリックされたラベルに active-click クラスを追加
-        labelElement.classList.add('active-click');
-
-        // アクティブなラベルを更新 (スクロール位置による)
-        updateActiveLabel();
-      });
+        container.appendChild(imageCard);
+      }
     }
-  });
-}
-
-// アクティブなラベルを更新する関数
-function updateActiveLabel() {
-  const labelContainers = document.querySelectorAll('.label-container');
-  const sidebarLabelList = document.getElementById('sidebarLabelList');
-  const sidebarLabels = sidebarLabelList.querySelectorAll('div:not(.image-count)'); // 画像数表示以外の要素を取得
-
-  // すべてのサイドバーラベルから active-scroll クラスを削除
-  sidebarLabels.forEach(label => label.classList.remove('active-scroll'));
-
-  // スクロール位置が最上部で、All がクリックされている場合のみ "All" を active-scroll にする
-  if (window.scrollY === 0 && sidebarLabels[0].classList.contains('active-click')) { 
-    sidebarLabels[0].classList.add('active-scroll');
-    return;
-  }
-
-  // 画面上部に表示されているラベルを検索
-  let activeLabel = null;
-  for (const labelContainer of labelContainers) {
-    const labelRect = labelContainer.getBoundingClientRect();
-    if (labelRect.top <= 250 && labelRect.bottom > 250) { // ラベルが画面上部に表示されている
-      activeLabel = labelContainer.dataset.labelId;
-      break;
-    }
-  }
-
-  // アクティブなラベルを更新
-  if (activeLabel) {
-    const activeSidebarLabel = Array.from(sidebarLabels).find(label => label.textContent === activeLabel);
-    if (activeSidebarLabel) {
-      activeSidebarLabel.classList.add('active-scroll');
-    }
+  } catch (error) {
+    handleError(error, '画像一覧の取得に失敗しました。');
   }
 }
 
-// 画像カードを作成する関数
+/**
+ * 画像カードを作成する関数
+ * @param {string} projectName - プロジェクト名
+ * @param {string} folderName - フォルダ名
+ * @param {string} imageName - 画像名
+ * @returns {HTMLElement} - 作成した画像カード
+ */
 function createImageCard(projectName, folderName, imageName) {
-  const imagePlaceholder = document.createElement('div');
-  imagePlaceholder.classList.add('image-placeholder');
   const imageCard = document.createElement('div');
   imageCard.classList.add('uploaded-image-card');
   imageCard.dataset.imageName = imageName;
+
+  const imagePlaceholder = document.createElement('div');
+  imagePlaceholder.classList.add('image-placeholder');
   imageCard.appendChild(imagePlaceholder);
 
-  const imageSrc = `/projects/${projectName}/verify-data/${folderName}/${encodeURIComponent(imageName)}`; // 画像パスを指定
+  const imageSrc = `/projects/${projectName}/verify-data/${folderName}/${encodeURIComponent(imageName)}`;
   imagePlaceholder.style.backgroundImage = `url("${imageSrc}")`;
 
-  // 画像名を表示するspan要素を追加
   const imageNameSpan = document.createElement('span');
   imageNameSpan.classList.add('image-name');
-  imageNameSpan.style.display = 'none'; 
+  imageNameSpan.style.display = 'none';
   imageCard.appendChild(imageNameSpan);
 
-  // ホバーイベントリスナーを追加
-  imageCard.addEventListener('mouseover', (event) => {
+  // マウスオーバー時の処理
+  imageCard.addEventListener('mouseover', () => {
     imageNameSpan.textContent = imageName;
     imageNameSpan.style.display = 'block';
     imageCard.classList.add('hovered'); 
   });
 
-  imageCard.addEventListener('mouseout', (event) => {
+  // マウスアウト時の処理
+  imageCard.addEventListener('mouseout', () => {
     imageNameSpan.style.display = 'none';
     imageCard.classList.remove('hovered'); 
   });
 
-  // 確度を表示する要素を追加
   const confidenceSpan = document.createElement('span');
   confidenceSpan.classList.add('confidence');
   imageCard.appendChild(confidenceSpan); 
 
-  // ラベル名と確度を表示する要素を追加
   const labelConfidenceContainer = document.createElement('div');
   labelConfidenceContainer.classList.add('label-confidence-container');
-  imageCard.appendChild(labelConfidenceContainer);
-
-  // スクロールバーを表示するために、スタイルを更新
   labelConfidenceContainer.style.overflowY = 'auto';
   labelConfidenceContainer.style.maxHeight = '80px';
-  
+  imageCard.appendChild(labelConfidenceContainer);
+
+  // 右クリックメニューの無効化と画像拡大表示
+  imageCard.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    enlargeImage(imageSrc);
+  });
+
   return imageCard;
 }
 
-
-// 検証結果を表示する関数
+/**
+ * 検証結果を表示する関数
+ * @param {string} projectName - プロジェクト名
+ * @param {string} folderName - フォルダ名
+ * @param {Object} result - 検証結果
+ */
 async function displayVerificationResult(projectName, folderName, result) {
   const uploadedFolderList = document.getElementById('uploadedFolderList');
   const folderContainer = Array.from(uploadedFolderList.querySelectorAll('.uploaded-folder-container')).find(container => container.textContent.includes(folderName));
-
-  // 既存の画像を削除
   const uploadedImagesContainer = folderContainer.querySelector('.uploaded-images-container');
   uploadedImagesContainer.innerHTML = '';
+  uploadedImagesContainer.classList.add('verification-result');
 
-  // 検証結果が表示されたことを示すクラスを追加
-  uploadedImagesContainer.classList.add('verification-result'); 
-
-  // "Predicted:" を表示する要素を追加
   const predictedLabel = document.createElement('div');
   predictedLabel.textContent = 'Predicted:';
-  predictedLabel.classList.add('predicted-label'); // スタイルを追加
-  uploadedImagesContainer.appendChild(predictedLabel); // uploadedImagesContainer に追加
+  predictedLabel.classList.add('predicted-label');
+  uploadedImagesContainer.appendChild(predictedLabel);
 
-  // ラベルごとに画像を分類
+  const observer = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const imageCard = entry.target;
+        const imageSrc = `/projects/${projectName}/verify-data/${folderName}/${encodeURIComponent(imageCard.dataset.imageName)}`;
+        lazyLoadImage(imageSrc, imageScale, imageCard.querySelector('.image-placeholder')).catch(() => {});
+        observer.unobserve(imageCard);
+      }
+    });
+  });
+
   result.classes.forEach((label, index) => {
-    const labelGroup = document.createElement('div'); // ラベルグループ要素を作成
-    labelGroup.classList.add('result-label-group'); // ラベルグループにクラスを追加
-    labelGroup.dataset.labelName = label; // ラベル名をデータ属性として保存
+    const labelGroup = document.createElement('div');
+    labelGroup.classList.add('result-label-group');
+    labelGroup.dataset.labelName = label;
 
-    // ラベル名要素を作成
     const labelNameElement = document.createElement('div');
     labelNameElement.classList.add('result-label-name');
     labelNameElement.textContent = label;
     labelGroup.appendChild(labelNameElement);
 
-    // 画像コンテナを作成
     const imagesContainer = document.createElement('div');
     imagesContainer.classList.add('result-images-container');
-    imagesContainer.style.display = 'flex'; // 画像コンテナに flexbox を適用
-    imagesContainer.style.flexWrap = 'wrap'; // 画像が横幅を超えた場合、折り返して表示
+    imagesContainer.style.display = 'flex';
+    imagesContainer.style.flexWrap = 'wrap';
 
-
-    // 確度が最も高いラベルが index の画像を追加
     result.images.forEach(image => {
       const maxConfidenceIndex = image.confidence.indexOf(Math.max(...image.confidence));
       if (maxConfidenceIndex === index) {
         const imageCard = createImageCard(projectName, folderName, image.name);
-        
-        // 確度を画像カードに表示
+        observer.observe(imageCard);
+        imageCard.addEventListener('contextmenu', (event) => {
+          event.preventDefault();
+          const imageSrc = `/projects/${projectName}/verify-data/${folderName}/${encodeURIComponent(image.name)}`;
+          enlargeImage(imageSrc);
+        });
+
         const confidenceSpan = imageCard.querySelector('.confidence');
         confidenceSpan.textContent = `${(image.confidence[maxConfidenceIndex] * 100).toFixed(1)}%`; 
 
-        // ラベル名と確度を画像カードに表示
         const labelConfidenceContainer = imageCard.querySelector('.label-confidence-container');
-        result.classes.forEach((label, i) => {
-        const labelConfidence = document.createElement('div');
-        labelConfidence.classList.add('label-confidence');
-        labelConfidence.textContent = `${(image.confidence[i] * 100).toFixed(1)}% ${label}`;
-        labelConfidenceContainer.appendChild(labelConfidence);
-      });
-      
+        result.classes.forEach((lbl, i) => {
+          const labelConfidence = document.createElement('div');
+          labelConfidence.classList.add('label-confidence');
+          labelConfidence.textContent = `${(image.confidence[i] * 100).toFixed(1)}% ${lbl}`;
+          labelConfidenceContainer.appendChild(labelConfidence);
+        });
+
         imagesContainer.appendChild(imageCard);
       }
     });
 
-    // ラベルグループに画像コンテナを追加
     labelGroup.appendChild(imagesContainer);
-
-    // ラベル名の右側に画像数を表示
     labelNameElement.textContent = `${label} (${imagesContainer.querySelectorAll('.uploaded-image-card').length} images)`;
-    
-    // 画像コンテナをラベルグループに追加
     uploadedImagesContainer.appendChild(labelGroup);
   });
-}
-
-
-
-
-// ==============================
-// 5. 画像アップロード
-// ==============================
-
-// 画像アップロード処理
-async function uploadImages(files, targetDirectory) {
-  const projectName = targetDirectory.split('/')[2]; // プロジェクト名を取得
-  const labelName = targetDirectory.split('/')[3]; // ラベル名を取得
-  const uploadPromises = []; // アップロード処理の Promise を格納する配列
-
-  // 各ファイルをアップロード
-  for (const file of files) {
-    if (file.size > 1024 * 1024) { // ファイルサイズが 1MB を超えている場合
-      console.error(`アップロードする画像は1MB未満にしてください (画像名: ${file.name})`);
-    } else {
-      try {
-        // Blob データを直接取得
-        const fileData = await file.arrayBuffer(); // ファイルデータを ArrayBuffer として取得
-
-        // アップロード処理の Promise を作成し、配列に追加
-        uploadPromises.push(
-          socket.emit('upload', {
-            projectName: projectName,
-            labelName: labelName,
-            fileData: fileData, // ArrayBuffer を送信
-            fileName: file.name,
-          })
-        );
-      } catch (error) {
-        handleError(error, '画像のアップロード中にエラーが発生しました');
-      }
-    }
-  }
-
-  // すべてのアップロード処理が完了するのを待つ
-  await Promise.all(uploadPromises); 
-  // すべてのアップロード処理が完了したら、サーバーに通知
-  socket.emit('uploadComp'); 
-}
-
-// 画像を移動する関数
-async function moveImage(projectName, imageName, sourceLabel, targetLabel) {
-  // 画像移動イベントをサーバーに送信
-  socket.emit('moveImage', { projectName, imageName, sourceLabel, targetLabel });
-
-  // サーバーからのレスポンスを待つ
-  return new Promise((resolve, reject) => {
-    socket.on('moveImageSuccess', (data) => {
-      console.log(data.message);
-      resolve(); // 成功したら Promise を解決
-    });
-
-    socket.on('moveImageError', (data) => {
-      handleError(data.error, data.details);
-      reject(new Error(data.error)); // 失敗したら Promise を拒否
-    });
-  });
-}
-
-
-// ==============================
-// 6. 初期化
-// ==============================
-
-// DOMContentLoaded イベント発生時の初期化処理
-document.addEventListener('DOMContentLoaded', init);
-
-// 初期化関数
-async function init() {
-  // UIの初期設定
-  await setupUI();
-
-  // Socket.IO の初期化
-  socket = io('http://localhost:3000'); // サーバーに接続
-  console.log('サーバーに接続しました');
-
-  // 画像アップロード成功イベント
-  socket.on('uploadSuccess', (data) => {
-    console.log(data.message, data.fileName); // 成功メッセージを表示
-  });
-
-  // 画像アップロードエラーイベント
-  socket.on('uploadError', (data) => {
-    handleError(data.error, data.details); // エラーメッセージを表示
-  });
-
-  // 進捗状況更新イベント
-  socket.on('updateProgress', (progress) => {
-    updateProgress(progress); // プログレスバーを更新
-  });
-
-  // 学習完了イベント
-  socket.on('learnCompleted', (data) => {
-    console.log(data.message);
-    alert(data.message); // 学習完了とモデル保存のメッセージを表示
-    const trainStartIcon = document.getElementById('trainStartIcon'); 
-    trainStartIcon.textContent = '▷'; 
-  });
-
-  // 学習エラーイベント
-  socket.on('learnError', (data) => {
-    handleError(data.error, data.details);
-  });
-  
-  // 検証結果イベント
-  socket.on('verificationResult', (data) => {
-    const { projectName, folderName, result } = data;
-    console.log('検証結果:', result); 
-    displayVerificationResult(projectName, folderName, result); // 検証結果を表示
-  });
-
-  // カスタムイベントリスナーを設定
-  socket.on('image-data-changed', async () => {
-    updateImageCount();
-    await displayEachImages();
-    displaySidebarLabelList(await fetchLabelList(document.getElementById("projectLink").textContent.trim()));
-    updateActiveLabel(); // displayEachImages の完了後に updateActiveLabel を実行
-  });
-  
-}
-
-
-
-
-// UI の初期設定を行う関数
-async function setupUI() {
-  setupImageHoverEvents();
-  await displayEachImages();
-  setupEventListeners();
-
-  // "Label" 文字のクリックイベントリスナーを追加
-  setupSidebarLabelToggle();
-
-  // "Check" 項目のクリックイベントリスナーを追加
-  setupSidebarCheckToggle();
-
-  // 初期状態でサイドバーのラベル一覧を表示
-  displaySidebarLabelList(await fetchLabelList(document.getElementById("projectLink").textContent.trim()));
-  // スクロールイベントリスナーを追加
-  window.addEventListener('scroll', updateActiveLabel);
-  // 初期状態でアクティブなラベルを設定
-  updateActiveLabel(); 
-
-  // sidebar-label 要素を初期状態でアクティブにする
-  const sidebarLabel = document.getElementById('sidebarLabel');
-  const imageList = document.getElementById('imageList');
-  sidebarLabel.classList.add('active');
-  imageList.style.display = 'block';
-
-  // プログレスバーを表示
-  await displayProgress(); 
 }
